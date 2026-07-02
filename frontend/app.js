@@ -191,17 +191,17 @@ function drawRoute(s) {
 
     const color = directionColor(s.direction);
 
-    // Visible polyline (with white shadow underneath for visibility on light map)
+    // Visible polyline (with subtle white shadow underneath for contrast)
     L.polyline(latlngs, {
         color: '#ffffff',
-        weight: 6,
-        opacity: 0.6,
+        weight: 5,
+        opacity: 0.85,
         smoothFactor: 1,
     }).addTo(reachableLayer);
     L.polyline(latlngs, {
         color,
-        weight: 3,
-        opacity: 0.95,
+        weight: 3.5,
+        opacity: 1,
         smoothFactor: 1,
     }).addTo(reachableLayer);
 
