@@ -34,6 +34,21 @@
 
     <button id="open-sidebar" aria-label="展开侧栏">≡</button>
 
+    <!-- Train detail panel — shown when a route is selected -->
+    <aside id="detail-panel" class="hidden">
+        <div class="detail-header">
+            <div class="detail-title">
+                <h2 id="detail-name">—</h2>
+                <div id="detail-meta">—</div>
+            </div>
+            <button id="close-detail" aria-label="关闭详情">×</button>
+        </div>
+        <div class="detail-stops-header">
+            <span>完整经停</span>
+        </div>
+        <ol id="detail-stops"></ol>
+    </aside>
+
     <!-- Bottom: time slider -->
     <footer id="controls">
         <div class="slider-row">

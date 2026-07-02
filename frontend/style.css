@@ -108,6 +108,11 @@ html, body {
     background: rgba(255,255,255,0.04);
     border-left-color: var(--accent);
 }
+#station-list li.selected {
+    background: rgba(211, 60, 31, 0.10);
+    border-left-color: var(--accent);
+}
+#station-list li.selected .name { color: var(--accent); }
 #station-list li .row1 {
     display: flex;
     justify-content: space-between;
@@ -279,3 +284,106 @@ html, body {
 .leaflet-popup-content { margin: 10px 14px; font-size: 13px; line-height: 1.5; }
 .leaflet-popup-content strong { color: var(--accent); }
 .leaflet-popup-close-button { color: var(--text-dim) !important; }
+
+/* ── Train detail panel (selected route) ────── */
+#detail-panel {
+    position: absolute;
+    top: 64px; left: 16px;
+    width: 340px;
+    max-height: calc(100vh - 280px);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    z-index: 600;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+#detail-panel.hidden {
+    transform: translateX(-20px);
+    opacity: 0;
+    pointer-events: none;
+}
+.detail-header {
+    display: flex;
+    align-items: flex-start;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--panel-border);
+    gap: 8px;
+}
+.detail-title { flex: 1; min-width: 0; }
+.detail-title h2 {
+    margin: 0; font-size: 16px; font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#detail-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+#close-detail {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1;
+}
+#close-detail:hover { color: var(--text); }
+.detail-stops-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--panel-border);
+}
+#detail-stops {
+    list-style: none;
+    counter-reset: stop;
+    margin: 0; padding: 4px 0;
+    overflow-y: auto;
+    flex: 1;
+    font-size: 13px;
+}
+#detail-stops li {
+    padding: 6px 16px 6px 40px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-left: 3px solid transparent;
+    position: relative;
+    transition: background 0.12s;
+}
+#detail-stops li::before {
+    counter-increment: stop;
+    content: counter(stop);
+    position: absolute;
+    left: 14px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px;
+    background: rgba(60, 70, 85, 0.20);
+    color: var(--text-dim);
+    border-radius: 50%;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+}
+#detail-stops li.hub {
+    background: rgba(211, 60, 31, 0.10);
+    border-left-color: var(--accent);
+    font-weight: 700;
+}
+#detail-stops li.hub::before {
+    background: var(--accent); color: #fff;
+}
+#detail-stops li .stop-name { font-weight: 500; }
+#detail-stops li .stop-time {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    margin-left: 8px;
+    color: var(--text-dim);
+}
+#detail-stops li.hub .stop-time { color: var(--accent); }
+body.route-selected .marker-other {
+    background: rgba(60, 70, 85, 0.30) !important;
+    border-color: rgba(60, 70, 85, 0.40) !important;
+}
