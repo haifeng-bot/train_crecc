@@ -47,7 +47,7 @@ html, body {
     pointer-events: none;
 }
 #topbar h1 {
-    margin: 0;
+    margin: 0 0 0 56px;
     font-size: 18px;
     font-weight: 600;
     letter-spacing: 0.5px;
