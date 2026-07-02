@@ -268,7 +268,10 @@ def export_reach_json(
     Returns the dict (and also writes to output_path if given).
     """
     if output_path is None:
-        output_path = str(DATA_DIR / "reach.json")
+        # Default: write to frontend/data/reach.json (served by Cloudflare Pages)
+        frontend_dir = DATA_DIR.parent / "frontend" / "data"
+        frontend_dir.mkdir(parents=True, exist_ok=True)
+        output_path = str(frontend_dir / "reach.json")
 
     close = conn is None
     if close:
@@ -282,11 +285,11 @@ def export_reach_json(
         if not hub or hub["lat"] is None:
             raise RuntimeError("Hub station 芜湖 has no lat/lon — geocode first.")
 
-        # Max minutes for the slider
+        # Max minutes for the slider (cap at 720 for UX)
         max_row = conn.execute(
             "SELECT COALESCE(MAX(min_minutes), 0) AS m FROM v_station_reach"
         ).fetchone()
-        max_minutes = max_row["m"]
+        max_minutes = min(max_row["m"], 720) if max_row["m"] else 720
 
         # All stations with reach data + their fastest route
         rows = conn.execute("""
