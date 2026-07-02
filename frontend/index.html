@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>芜湖高铁通达性地图 — train_crecc</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- Header overlay: title + status -->
+    <header id="topbar">
+        <h1>芜湖高铁通达性地图</h1>
+        <div id="status">
+            <span id="status-time">N 分钟内</span>
+            <span id="status-count">0 站可达</span>
+        </div>
+    </header>
+
+    <!-- Sidebar with reachable station list -->
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <h2>可达车站</h2>
+            <button id="close-sidebar" aria-label="收起">×</button>
+        </div>
+        <ul id="station-list"></ul>
+    </aside>
+
+    <button id="open-sidebar" aria-label="展开侧栏" hidden>≡</button>
+
+    <!-- Loading progress bar (full-width top) -->
+    <div id="loading-bar"><div class="progress-fill"></div></div>
+
+    <!-- Bottom: time slider -->
+    <footer id="controls">
+        <div class="slider-row">
+            <label for="time-slider">
+                <span id="time-display">0</span> 分钟内可达
+            </label>
+            <input id="time-slider" type="range" min="0" max="720" step="1" value="0" />
+            <div class="tick-row">
+                <span>0</span>
+                <span>60</span>
+                <span>120</span>
+                <span>240</span>
+                <span>360</span>
+                <span>480</span>
+                <span>600</span>
+                <span>720</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="app.js" defer></script>
+</body>
+</html>

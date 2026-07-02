@@ -3,11 +3,14 @@ Repository layer — all DB reads/writes in one place.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
 from config import (
+    DATA_DIR,
+    HUB_STATION_NAME,
     META_KEY_LAST_UPDATED,
     META_KEY_LAST_FETCH_AT,
     META_KEY_LAST_FETCH_STATUS,
@@ -242,3 +245,131 @@ def db_size(conn: sqlite3.Connection | None = None) -> dict[str, int]:
             r = c.execute(f"SELECT COUNT(*) as n FROM {t}").fetchone()
             counts[t] = r["n"]
         return counts
+
+
+# ── Export: reach.json for the frontend ─────────────────────────────────
+
+
+def export_reach_json(
+    output_path: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> dict:
+    """
+    Build the static JSON consumed by the frontend.
+
+    For each station in v_station_reach, attach:
+      - lat, lon, direction (from stations)
+      - fastest route (stops from 芜湖 to this station, with each stop's
+        lat/lon/running_minutes)
+
+    Skips stations without lat/lon. Skips routes whose stops are missing
+    coords (the polyline would break in the frontend).
+
+    Returns the dict (and also writes to output_path if given).
+    """
+    if output_path is None:
+        output_path = str(DATA_DIR / "reach.json")
+
+    close = conn is None
+    if close:
+        conn = get_conn()
+    try:
+        # Hub coords
+        hub = conn.execute(
+            "SELECT lat, lon FROM stations WHERE station_name = ?",
+            (HUB_STATION_NAME,),
+        ).fetchone()
+        if not hub or hub["lat"] is None:
+            raise RuntimeError("Hub station 芜湖 has no lat/lon — geocode first.")
+
+        # Max minutes for the slider
+        max_row = conn.execute(
+            "SELECT COALESCE(MAX(min_minutes), 0) AS m FROM v_station_reach"
+        ).fetchone()
+        max_minutes = max_row["m"]
+
+        # All stations with reach data + their fastest route
+        rows = conn.execute("""
+            SELECT
+                v.station_id,
+                v.station_name,
+                v.city_id,
+                v.city_name,
+                v.lat,
+                v.lon,
+                v.direction,
+                v.min_minutes,
+                v.max_minutes,
+                v.train_count,
+                v.fastest_train_code
+            FROM v_station_reach v
+            WHERE v.lat IS NOT NULL AND v.lon IS NOT NULL
+            ORDER BY v.min_minutes
+        """).fetchall()
+
+        stations_out = []
+        skipped_no_route = 0
+        for r in rows:
+            stops = query_fastest_route(r["fastest_train_code"],
+                                        r["station_id"], conn=conn)
+            if not stops:
+                skipped_no_route += 1
+                continue
+
+            # Build stop list with coords (skip if any stop lacks coords)
+            route_stops = []
+            ok = True
+            for s in stops:
+                srow = conn.execute(
+                    "SELECT lat, lon FROM stations WHERE station_name = ?",
+                    (s["station_name"],),
+                ).fetchone()
+                if not srow or srow["lat"] is None:
+                    ok = False
+                    break
+                route_stops.append({
+                    "name": s["station_name"],
+                    "lat": srow["lat"],
+                    "lon": srow["lon"],
+                    "run_min": s["running_minutes"],
+                })
+            if not ok:
+                skipped_no_route += 1
+                continue
+
+            stations_out.append({
+                "id": r["station_id"],
+                "name": r["station_name"],
+                "city": r["city_name"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "direction": r["direction"],
+                "min_minutes": r["min_minutes"],
+                "max_minutes": r["max_minutes"],
+                "train_count": r["train_count"],
+                "fastest_train_code": r["fastest_train_code"],
+                "route": route_stops,
+            })
+
+        out = {
+            "hub": {
+                "name": HUB_STATION_NAME,
+                "lat": hub["lat"],
+                "lon": hub["lon"],
+            },
+            "max_minutes": max_minutes,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "station_count": len(stations_out),
+            "stations": stations_out,
+        }
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+
+        print(f"[export] {len(stations_out)} stations written "
+              f"({skipped_no_route} skipped for missing route/coords) → {output_path}")
+
+        return out
+    finally:
+        if close:
+            conn.close()

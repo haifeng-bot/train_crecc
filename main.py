@@ -249,6 +249,20 @@ def cmd_city(city: str):
               f"{r['to_arr']:>5} {r['duration_min']:>5}")
 
 
+def cmd_export_reach(output_path: str | None = None):
+    """Export pre-computed reach data as JSON for the frontend."""
+    from db.repository import export_reach_json
+    result = export_reach_json(output_path=output_path)
+    import os
+    if output_path is None:
+        from config import DATA_DIR
+        output_path = str(DATA_DIR / "reach.json")
+    size_kb = os.path.getsize(output_path) / 1024
+    print(f"[export] File size: {size_kb:.1f} KB")
+    print(f"[export] Hub: 芜湖, {result['station_count']} reachable stations, "
+          f"max time: {result['max_minutes']} min")
+
+
 def cmd_import_geo(json_path: str):
     """Import station coordinates from an external JSON file.
 
@@ -292,6 +306,10 @@ def main():
                               help="从外部 JSON 文件导入车站坐标（推荐代替 Nominatim）")
     import_p.add_argument("json_path", type=str, nargs="?", default=None)
 
+    export_p = sub.add_parser("export-reach",
+                              help="导出 reach.json（供前端 / Cloudflare Pages Function 使用）")
+    export_p.add_argument("output_path", type=str, nargs="?", default=None)
+
     args = parser.parse_args()
 
     if args.command == "fetch":
@@ -308,6 +326,8 @@ def main():
         cmd_city(args.city)
     elif args.command == "import-geo":
         cmd_import_geo(args.json_path)
+    elif args.command == "export-reach":
+        cmd_export_reach(args.output_path)
     else:
         parser.print_help()
 
