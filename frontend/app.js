@@ -170,13 +170,22 @@ function drawRoute(s) {
     const stops = s.route;
     if (!stops || stops.length < 1) return;
 
-    // Always start from the hub (芜湖), then follow the route stops
     const hub = [fullData.hub.lat, fullData.hub.lon];
     const latlngs = stops.map((p) => [p.lat, p.lon]);
-    // Prepend hub if not already the first stop
     const first = latlngs[0];
     if (first[0] !== hub[0] || first[1] !== hub[1]) {
-        latlngs.unshift(hub);
+        // Offset the hub point outward so the line visibly emerges from
+        // outside the hub marker (12 px in the direction of the first stop)
+        const hubPx = map.latLngToLayerPoint(hub);
+        const firstPx = map.latLngToLayerPoint(first);
+        const dx = firstPx.x - hubPx.x;
+        const dy = firstPx.y - hubPx.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const offsetHubPx = L.point(
+            hubPx.x + (dx / len) * 12,
+            hubPx.y + (dy / len) * 12
+        );
+        latlngs.unshift(map.layerPointToLatLng(offsetHubPx));
     }
 
     const color = directionColor(s.direction);
