@@ -289,7 +289,7 @@ def export_reach_json(
         max_row = conn.execute(
             "SELECT COALESCE(MAX(min_minutes), 0) AS m FROM v_station_reach"
         ).fetchone()
-        max_minutes = min(max_row["m"], 720) if max_row["m"] else 720
+        max_minutes = min(max_row["m"], 2428) if max_row["m"] else 2428
 
         # All stations with reach data + their fastest route
         rows = conn.execute("""
