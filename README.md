@@ -26,6 +26,12 @@ python main.py city 杭州
 
 # 查询芜湖 60 分钟内可达的车站（显示最快车次途径）
 python main.py reach 60
+
+# 从外部 JSON 一次性批量导入坐标（推荐代替 Nominatim）
+python main.py import-geo data/external/osm_stations_2021.json
+
+# 查询从芜湖到某城市的车次
+python main.py city 杭州
 ```
 
 ## 命令
@@ -34,10 +40,11 @@ python main.py reach 60
 |------|------|
 | `fetch` | 全量抓取。若页面上次更新时间未变则跳过 |
 | `status` | 显示数据库大小和最近抓取时间 |
-| `geocode` | 对未编码的车站进行地理编码（经纬度） |
+| `geocode` | 对未编码的车站进行地理编码（默认走 Nominatim；受 IP 限速时不宜用） |
 | `directions` | 计算从芜湖出发的 8 方位方向 |
-| `reach <min>` | 查询 N 分钟内可达车站 |
+| `reach <min>` | 查询 N 分钟内可达车站（含最快车次经停路线） |
 | `city <city>` | 查询所有从芜湖到该城市的列车 |
+| `import-geo <path>` | 从外部 JSON 文件批量导入坐标（推荐方式） |
 
 ## 数据库结构
 

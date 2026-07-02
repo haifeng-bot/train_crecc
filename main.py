@@ -249,6 +249,30 @@ def cmd_city(city: str):
               f"{r['to_arr']:>5} {r['duration_min']:>5}")
 
 
+def cmd_import_geo(json_path: str):
+    """Import station coordinates from an external JSON file.
+
+    Used as a fallback when Nominatim rate-limits us. JSON format:
+        {"station_name": [lon, lat], ...}
+    """
+    from config import EXTERNAL_GEO_DEFAULT
+    from scrapers.external_geo import import_external_geo
+
+    path = json_path or str(EXTERNAL_GEO_DEFAULT)
+    conn = get_conn()
+    result = import_external_geo(path, conn=conn)
+    conn.close()
+
+    print(f"\n[import_geo] Done: {result['matched']} matched, "
+          f"{result['no_match_count']} still missing")
+    if result['no_match_list']:
+        print(f"  Missing stations ({result['no_match_count']}):")
+        for name in result['no_match_list'][:30]:
+            print(f"    - {name}")
+        if result['no_match_count'] > 30:
+            print(f"    ... and {result['no_match_count'] - 30} more")
+
+
 def main():
     parser = argparse.ArgumentParser(description="train_crecc — 芜湖站数据维护")
     sub = parser.add_subparsers(dest="command")
@@ -264,6 +288,10 @@ def main():
     city_p = sub.add_parser("city", help="查询从芜湖到某城市的车次")
     city_p.add_argument("city", type=str)
 
+    import_p = sub.add_parser("import-geo",
+                              help="从外部 JSON 文件导入车站坐标（推荐代替 Nominatim）")
+    import_p.add_argument("json_path", type=str, nargs="?", default=None)
+
     args = parser.parse_args()
 
     if args.command == "fetch":
@@ -278,6 +306,8 @@ def main():
         cmd_reach(args.minutes)
     elif args.command == "city":
         cmd_city(args.city)
+    elif args.command == "import-geo":
+        cmd_import_geo(args.json_path)
     else:
         parser.print_help()
 

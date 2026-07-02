@@ -40,5 +40,10 @@ META_KEY_LAST_FETCH_STATUS = "last_fetch_status"  # ok | unchanged | failed
 GEOCODER_USER_AGENT = "train_crecc/0.1 (https://github.com/haifeng-bot; wuhu train monitor)"
 GEOCODER_RATE_LIMIT = 1.1   # seconds between requests (Nominatim ToS: ≤1 req/sec)
 
+# Default external dataset for bulk geo import (used by `import-geo`).
+# Source: OSM railway=station nodes extracted by epcm/TrainVis project
+# (https://github.com/epcm/TrainVis) - 3276 stations, WGS84.
+EXTERNAL_GEO_DEFAULT = DATA_DIR / "external" / "osm_stations_2021.json"
+
 # --- Hub (the visual + query anchor) ---
 HUB_STATION_NAME = "芜湖"   # the central station all directions are computed from
