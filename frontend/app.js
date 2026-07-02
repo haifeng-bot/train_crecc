@@ -172,20 +172,21 @@ function drawRoute(s) {
 
     const hub = [fullData.hub.lat, fullData.hub.lon];
     const latlngs = stops.map((p) => [p.lat, p.lon]);
-    const first = latlngs[0];
-    if (first[0] !== hub[0] || first[1] !== hub[1]) {
-        // Offset the hub point outward so the line visibly emerges from
-        // outside the hub marker (12 px in the direction of the first stop)
+
+    // The backend puts 芜湖 at route[0]. Visually offset the hub point
+    // outward (12 px toward the first non-hub stop) so the polyline
+    // emerges from outside the hub marker instead of being hidden under it.
+    if (latlngs.length >= 2) {
         const hubPx = map.latLngToLayerPoint(hub);
-        const firstPx = map.latLngToLayerPoint(first);
-        const dx = firstPx.x - hubPx.x;
-        const dy = firstPx.y - hubPx.y;
+        const secondPx = map.latLngToLayerPoint(latlngs[1]);
+        const dx = secondPx.x - hubPx.x;
+        const dy = secondPx.y - hubPx.y;
         const len = Math.hypot(dx, dy) || 1;
         const offsetHubPx = L.point(
             hubPx.x + (dx / len) * 12,
             hubPx.y + (dy / len) * 12
         );
-        latlngs.unshift(map.layerPointToLatLng(offsetHubPx));
+        latlngs[0] = map.layerPointToLatLng(offsetHubPx);
     }
 
     const color = directionColor(s.direction);
