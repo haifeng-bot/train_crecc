@@ -1,10 +1,9 @@
 /* train_crecc — interactive reachability map
  *
- * 1. Fetch /api/reach (Cloudflare Pages Function) — returns the full
- *    static dataset (hub + stations + routes).
- * 2. Render the hub + all stations as dots.
- * 3. On slider change, debounce 1s, then re-render reachable stations
- *    + their route polylines.
+ * Static-only architecture (no Cloudflare Function needed):
+ *   - fetch data/reach.json on page load
+ *   - all filtering is client-side (O(1) lookup per station)
+ *   - slider debounce 1s → re-render reachable stations + route polylines
  */
 
 const DEBOUNCE_MS = 1000;
@@ -13,13 +12,10 @@ const PALETTE = ['#1f6feb', '#ff6b35', '#3fb950', '#a371f7', '#f78166',
 
 let fullData = null;        // {hub, max_minutes, stations: [...]}
 let map = null;
-let hubMarker = null;
-let stationLayer = null;    // L.layerGroup of dimmed station markers
-let reachableLayer = null;  // L.layerGroup of highlighted reachable stations + routes
+let stationLayer = null;    // L.layerGroup of all station markers
+let reachableLayer = null;  // L.layerGroup of reachable stations + routes
 let sidebarList = null;
 let sliderTimeout = null;
-let activeTime = 0;
-let sidebarCollapsed = false;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -42,43 +38,30 @@ function initMap() {
         attributionControl: true,
     });
 
-    // Dark CartoDB basemap (matches our color theme)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '© OpenStreetMap contributors © CARTO',
         subdomains: 'abcd',
         maxZoom: 19,
     }).addTo(map);
 
-    stationLayer = L.layerGroup().addTo(map);
+    // Groups (order matters — routes behind markers)
+    L.layerGroup().addTo(map);           // placeholder for routes behind
     reachableLayer = L.layerGroup().addTo(map);
+    stationLayer  = L.layerGroup().addTo(map);
 }
 
 async function loadData() {
     showLoading(true);
     try {
-        const resp = await fetch('/api/reach');
-        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+        const resp = await fetch('data/reach.json');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         fullData = await resp.json();
-        // Set slider max from server (capped at 720 for sanity)
         const slider = document.getElementById('time-slider');
         slider.max = Math.min(720, fullData.max_minutes || 720);
+        slider.value = 0;
     } catch (e) {
-        console.error('loadData failed:', e);
-        // Fall back to direct JSON (works for local dev)
-        try {
-            const resp2 = await fetch('data/reach.json');
-            if (resp2.ok) {
-                fullData = await resp2.json();
-                const slider = document.getElementById('time-slider');
-                slider.max = Math.min(720, fullData.max_minutes || 720);
-            } else {
-                document.getElementById('status-time').textContent = '数据加载失败';
-                return;
-            }
-        } catch (e2) {
-            document.getElementById('status-time').textContent = '数据加载失败';
-            return;
-        }
+        document.getElementById('status-time').textContent = '数据加载失败';
+        console.error(e);
     } finally {
         showLoading(false);
     }
@@ -87,33 +70,39 @@ async function loadData() {
 function renderAllStations() {
     if (!fullData) return;
 
-    // Hub marker
+    // Hub marker — big orange pulsing dot
     const hubIcon = L.divIcon({
         className: 'hub-icon',
         html: '<div class="hub-marker"></div>',
         iconSize: [24, 24],
         iconAnchor: [12, 12],
     });
-    hubMarker = L.marker([fullData.hub.lat, fullData.hub.lon], { icon: hubIcon })
+    L.marker([fullData.hub.lat, fullData.hub.lon], { icon: hubIcon, zIndexOffset: 999 })
         .addTo(map)
         .bindPopup(`<strong>${fullData.hub.name}</strong><br/>数据枢纽`);
 
-    // All station markers (dimmed by default; lit up when reachable)
+    // All station markers (initially dimmed)
     fullData.stations.forEach((s) => {
-        const icon = L.divIcon({
-            className: 'station-icon',
-            html: '<div class="station-marker dimmed"></div>',
-            iconSize: [10, 10],
-            iconAnchor: [5, 5],
-        });
-        const m = L.marker([s.lat, s.lon], { icon })
-            .bindPopup(stationPopupHtml(s));
-        m.on('click', () => focusStation(s));
+        const m = makeStationMarker(s, false);
         stationLayer.addLayer(m);
     });
 
-    // Fit map to China bounds
     map.fitBounds([[18, 75], [54, 135]]);
+}
+
+function makeStationMarker(s, isReachable) {
+    const bg = isReachable ? directionColor(s.direction) : '';
+    const cls = isReachable ? '' : 'dimmed';
+    const icon = L.divIcon({
+        className: 'station-icon',
+        html: `<div class="station-marker ${cls}" ${bg ? `style="background:${bg}"` : ''}></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+    });
+    const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isReachable ? 500 : 100 })
+        .bindPopup(stationPopupHtml(s));
+    m.on('click', () => focusStation(s));
+    return m;
 }
 
 function stationPopupHtml(s) {
@@ -123,16 +112,14 @@ function stationPopupHtml(s) {
         经停 ${s.train_count} 趟车`;
 }
 
+/* ── Slider ──────────────────────────────────── */
+
 function setupSlider() {
     const slider = document.getElementById('time-slider');
     slider.addEventListener('input', (e) => {
         const n = parseInt(e.target.value, 10);
         document.getElementById('time-display').textContent = n;
-        // Update track fill via CSS
-        const pct = (n / parseInt(slider.max, 10)) * 100;
-        slider.style.setProperty('--fill', pct + '%');
         clearTimeout(sliderTimeout);
-        // Show loading bar immediately
         showLoading(true);
         sliderTimeout = setTimeout(() => {
             updateVisualization(n);
@@ -143,70 +130,50 @@ function setupSlider() {
 function setupSidebar() {
     sidebarList = document.getElementById('station-list');
     document.getElementById('close-sidebar').addEventListener('click', () => {
-        sidebarCollapsed = true;
         document.getElementById('sidebar').classList.add('collapsed');
         document.getElementById('open-sidebar').hidden = false;
     });
     document.getElementById('open-sidebar').addEventListener('click', () => {
-        sidebarCollapsed = false;
         document.getElementById('sidebar').classList.remove('collapsed');
         document.getElementById('open-sidebar').hidden = true;
     });
 }
 
+/* ── Core update: this fires after each debounced slider stop ── */
+
 function updateVisualization(n) {
     if (!fullData) return;
-    activeTime = n;
 
-    // Update status
     const reachable = fullData.stations.filter((s) => s.min_minutes <= n);
+
     document.getElementById('status-time').textContent = `${n} 分钟内`;
     document.getElementById('status-count').textContent = `${reachable.length} 站可达`;
 
-    // Clear previous reachable layers
-    reachableLayer.clearLayers();
-
-    // Dim non-reachable, light up reachable
-    stationLayer.eachLayer((m) => {
-        // (we don't have direct station info on the layer; toggle via className trick)
-    });
-    // Re-render markers with proper dim state
+    // 1. Rebuild station markers (dimmed/lit)
     stationLayer.clearLayers();
     fullData.stations.forEach((s) => {
-        const isReachable = s.min_minutes <= n;
-        const icon = L.divIcon({
-            className: 'station-icon',
-            html: `<div class="station-marker ${isReachable ? '' : 'dimmed'}" `
-                + `style="${isReachable ? `background:${directionColor(s.direction)}` : ''}"></div>`,
-            iconSize: [10, 10],
-            iconAnchor: [5, 5],
-        });
-        const m = L.marker([s.lat, s.lon], { icon })
-            .bindPopup(stationPopupHtml(s));
-        m.on('click', () => focusStation(s));
-        stationLayer.addLayer(m);
-
-        if (isReachable) {
-            drawRoute(s, n);
-        }
+        stationLayer.addLayer(makeStationMarker(s, s.min_minutes <= n));
     });
 
-    // Sidebar list
+    // 2. Draw reachable routes
+    reachableLayer.clearLayers();
+    reachable.forEach((s) => drawRoute(s));
+
+    // 3. Sidebar
     updateSidebar(reachable);
 
-    // Hide loading
-    setTimeout(() => showLoading(false), 100);
+    // 4. Auto-hide loading
+    setTimeout(() => showLoading(false), 80);
 }
 
-function drawRoute(s, n) {
-    const routeStops = s.route;
-    if (!routeStops || routeStops.length < 2) return;
+function drawRoute(s) {
+    const stops = s.route;
+    if (!stops || stops.length < 2) return;
 
-    // Polyline from hub to this station via intermediate stops
-    const latlngs = routeStops.map((p) => [p.lat, p.lon]);
+    const latlngs = stops.map((p) => [p.lat, p.lon]);
     const color = directionColor(s.direction);
 
-    // Main line
+    // Visible polyline
     L.polyline(latlngs, {
         color,
         weight: 2.5,
@@ -214,7 +181,7 @@ function drawRoute(s, n) {
         smoothFactor: 1,
     }).addTo(reachableLayer);
 
-    // Transparent hit zone for hover (from travel_map double-polyline trick)
+    // Fat invisible hit zone for tooltip on hover
     L.polyline(latlngs, {
         color: '#000',
         weight: 14,
@@ -223,15 +190,13 @@ function drawRoute(s, n) {
     }).addTo(reachableLayer)
         .bindTooltip(
             `<strong>${s.name}</strong> · ${s.min_minutes}m · ${s.fastest_train_code}`,
-            { sticky: true, direction: 'top', className: 'route-tooltip' }
+            { sticky: true, direction: 'top' }
         );
 }
 
 function directionColor(d) {
-    if (!d) return PALETTE[0];
-    // 8-way cardinal directions → palette index
-    const map = { N: 8, NE: 5, E: 0, SE: 7, S: 2, SW: 3, W: 6, NW: 1 };
-    return PALETTE[map[d]] || PALETTE[0];
+    const m = { N: 8, NE: 5, E: 0, SE: 7, S: 2, SW: 3, W: 6, NW: 1 };
+    return PALETTE[m[d]] || PALETTE[0];
 }
 
 function updateSidebar(reachable) {
@@ -240,7 +205,7 @@ function updateSidebar(reachable) {
         const li = document.createElement('li');
         li.innerHTML = `
             <div class="row1">
-                <span class="name">${s.name}${s.city ? ` <span style="color:var(--text-dim)">· ${s.city}</span>` : ''}</span>
+                <span class="name">${s.name}${s.city ? ` <span class="city-hint">· ${s.city}</span>` : ''}</span>
                 <span class="min">${s.min_minutes}m</span>
             </div>
             <div class="row2">${s.direction || '?'} · ${s.fastest_train_code} · ${s.train_count} 趟</div>
@@ -252,19 +217,17 @@ function updateSidebar(reachable) {
 
 function focusStation(s) {
     map.flyTo([s.lat, s.lon], 8, { duration: 0.8 });
+    // Try to open popup (match by coords on the station layer)
     stationLayer.eachLayer((m) => {
         const ll = m.getLatLng();
         if (Math.abs(ll.lat - s.lat) < 1e-5 && Math.abs(ll.lng - s.lon) < 1e-5) {
-            m.openPopup();
+            setTimeout(() => m.openPopup(), 100);
         }
     });
 }
 
 function showLoading(on) {
     const bar = document.getElementById('loading-bar');
-    if (on) {
-        bar.classList.add('active', 'indeterminate');
-    } else {
-        bar.classList.remove('active', 'indeterminate');
-    }
+    bar.classList.toggle('active', on);
+    bar.classList.toggle('indeterminate', on);
 }
