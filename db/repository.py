@@ -320,7 +320,13 @@ def export_reach_json(
                 continue
 
             # Build stop list with coords (skip if any stop lacks coords)
-            route_stops = []
+            # ALWAYS prepend the hub (芜湖) so the polyline starts there
+            route_stops = [{
+                "name": HUB_STATION_NAME,
+                "lat": hub["lat"],
+                "lon": hub["lon"],
+                "run_min": 0,
+            }]
             ok = True
             for s in stops:
                 srow = conn.execute(
