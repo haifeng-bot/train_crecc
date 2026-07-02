@@ -79,7 +79,18 @@ SELECT
   s2.direction,
   MIN(s2_stop.running_minutes - s_stop.running_minutes) AS min_minutes,
   MAX(s2_stop.running_minutes - s_stop.running_minutes) AS max_minutes,
-  COUNT(DISTINCT s2_stop.train_code) AS train_count
+  COUNT(DISTINCT s2_stop.train_code) AS train_count,
+  (SELECT s3.train_code
+     FROM stops s3_start
+     JOIN stops s3 ON s3_start.train_code = s3.train_code
+                  AND s3_start.sequence  < s3.sequence
+                  AND s3.running_minutes > s3_start.running_minutes
+     WHERE s3_start.station_id = ws.station_id
+       AND s3.station_id       = s2.station_id
+     ORDER BY (s3.running_minutes - s3_start.running_minutes) ASC,
+              s3.train_code ASC
+     LIMIT 1
+  ) AS fastest_train_code
 FROM stops s_stop
 JOIN stations ws
   ON s_stop.station_id = ws.station_id AND ws.station_name = '芜湖'

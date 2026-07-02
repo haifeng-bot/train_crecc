@@ -167,6 +167,44 @@ def query_reach(max_minutes: int,
         ).fetchall()
 
 
+def query_fastest_route(train_code: str,
+                        target_station_id: int,
+                        conn: sqlite3.Connection | None = None
+                        ) -> list[sqlite3.Row]:
+    """
+    Return the stops on `train_code` from 芜湖 (exclusive) up to and including
+    the station with `target_station_id`. Empty list if not on the route or
+    target appears before 芜湖.
+    """
+    with transaction(conn) as c:
+        # Anchor: find 芜湖's sequence on this train
+        wuhu = c.execute("""
+            SELECT s.sequence
+            FROM stops s
+            JOIN stations st ON s.station_id = st.station_id
+            WHERE s.train_code = ? AND st.station_name = '芜湖'
+        """, (train_code,)).fetchone()
+        if not wuhu:
+            return []
+        wuhu_seq = wuhu["sequence"]
+
+        return c.execute("""
+            SELECT
+                s.sequence,
+                st.station_name,
+                s.arrive_time,
+                s.depart_time,
+                s.running_minutes
+            FROM stops s
+            JOIN stations st ON s.station_id = st.station_id
+            WHERE s.train_code = ?
+              AND s.sequence  > ?
+              AND s.sequence <= (SELECT sequence FROM stops
+                                   WHERE train_code = ? AND station_id = ?)
+            ORDER BY s.sequence
+        """, (train_code, wuhu_seq, train_code, target_station_id)).fetchall()
+
+
 def query_city_to_wuhu(
     city_name: str,
     conn: sqlite3.Connection | None = None,

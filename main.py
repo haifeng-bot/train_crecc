@@ -23,7 +23,7 @@ from db.connection import get_conn, transaction
 from db.repository import (
     create_tables, get_meta, set_meta,
     overwrite_trains_and_stops, db_size,
-    query_reach, query_city_to_wuhu,
+    query_reach, query_fastest_route, query_city_to_wuhu,
 )
 from scrapers.http import build_session, Sleeper
 from scrapers.wuhu_page import parse_wuhu_page
@@ -210,15 +210,27 @@ def cmd_directions():
 
 
 def cmd_reach(minutes: int):
-    """Query reachable stations."""
+    """Query reachable stations + fastest-train route."""
     conn = get_conn()
     rows = query_reach(minutes, conn=conn)
-    conn.close()
-    print(f"{'Station':<20} {'Direction':<10} {'Min':>5} {'Trains':>6}")
-    print("-" * 50)
+    print(f"{'Station':<12} {'Dir':<4} {'Min':>4} {'Tr':>3}  Fastest train & route")
+    print("-" * 80)
     for r in rows:
-        print(f"{r['station_name']:<20} {r['direction'] or '?':<10} "
-              f"{r['min_minutes']:>5} {r['train_count']:>6}")
+        stops = query_fastest_route(r['fastest_train_code'],
+                                    r['station_id'], conn=conn)
+
+        if stops:
+            route_str = " → ".join(
+                f"{s['station_name']}({s['running_minutes']}m)"
+                for s in stops
+            )
+        else:
+            route_str = "(no route)"
+
+        print(f"{r['station_name']:<12} {r['direction'] or '?':<4} "
+              f"{r['min_minutes']:>4} {r['train_count']:>3}  "
+              f"{r['fastest_train_code']}: {route_str}")
+    conn.close()
 
 
 def cmd_city(city: str):

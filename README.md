@@ -24,7 +24,7 @@ python main.py status
 # 查询所有从芜湖到杭州的列车
 python main.py city 杭州
 
-# 查询芜湖 60 分钟内可达的车站
+# 查询芜湖 60 分钟内可达的车站（显示最快车次途径）
 python main.py reach 60
 ```
 
