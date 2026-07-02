@@ -70,14 +70,14 @@ async function loadData() {
 function renderAllStations() {
     if (!fullData) return;
 
-    // Hub marker — big orange pulsing dot
+    // Hub marker — big orange pulsing dot with permanent label
     const hubIcon = L.divIcon({
         className: 'hub-icon',
-        html: '<div class="hub-marker"></div>',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        html: '<div class="hub-marker"></div><div class="hub-label">芜湖枢纽</div>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
     });
-    L.marker([fullData.hub.lat, fullData.hub.lon], { icon: hubIcon, zIndexOffset: 999 })
+    L.marker([fullData.hub.lat, fullData.hub.lon], { icon: hubIcon, zIndexOffset: 9999, interactive: false })
         .addTo(map)
         .bindPopup(`<strong>${fullData.hub.name}</strong><br/>数据枢纽`);
 
@@ -174,8 +174,8 @@ function drawRoute(s) {
     const latlngs = stops.map((p) => [p.lat, p.lon]);
 
     // The backend puts 芜湖 at route[0]. Visually offset the hub point
-    // outward (12 px toward the first non-hub stop) so the polyline
-    // emerges from outside the hub marker instead of being hidden under it.
+    // outward (20 px toward the first non-hub stop) so the polyline
+    // emerges from clearly outside the 32px hub marker.
     if (latlngs.length >= 2) {
         const hubPx = map.latLngToLayerPoint(hub);
         const secondPx = map.latLngToLayerPoint(latlngs[1]);
@@ -183,8 +183,8 @@ function drawRoute(s) {
         const dy = secondPx.y - hubPx.y;
         const len = Math.hypot(dx, dy) || 1;
         const offsetHubPx = L.point(
-            hubPx.x + (dx / len) * 12,
-            hubPx.y + (dy / len) * 12
+            hubPx.x + (dx / len) * 20,
+            hubPx.y + (dy / len) * 20
         );
         latlngs[0] = map.layerPointToLatLng(offsetHubPx);
     }
