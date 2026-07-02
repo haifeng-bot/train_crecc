@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Data — local only, never commit
+data/raw/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Cache
+.cache/
+.DS_Store
