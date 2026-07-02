@@ -319,6 +319,18 @@ def export_reach_json(
                 skipped_no_route += 1
                 continue
 
+            # Find hub (芜湖) running_minutes on this train so we can
+            # re-anchor all subsequent stops to "time since 芜湖" instead
+            # of "time since real origin". When 芜湖 isn't the real
+            # origin, DB running_minutes are relative to the real origin.
+            hub_row = conn.execute("""
+                SELECT s.running_minutes
+                FROM stops s
+                JOIN stations st ON s.station_id = st.station_id
+                WHERE s.train_code = ? AND st.station_name = ?
+            """, (r["fastest_train_code"], HUB_STATION_NAME)).fetchone()
+            hub_run_min = hub_row["running_minutes"] if hub_row else 0
+
             # Build stop list with coords (skip if any stop lacks coords)
             # ALWAYS prepend the hub (芜湖) so the polyline starts there
             route_stops = [{
@@ -340,7 +352,7 @@ def export_reach_json(
                     "name": s["station_name"],
                     "lat": srow["lat"],
                     "lon": srow["lon"],
-                    "run_min": s["running_minutes"],
+                    "run_min": s["running_minutes"] - hub_run_min,
                 })
             if not ok:
                 skipped_no_route += 1
