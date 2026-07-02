@@ -168,9 +168,17 @@ function updateVisualization(n) {
 
 function drawRoute(s) {
     const stops = s.route;
-    if (!stops || stops.length < 2) return;
+    if (!stops || stops.length < 1) return;
 
+    // Always start from the hub (芜湖), then follow the route stops
+    const hub = [fullData.hub.lat, fullData.hub.lon];
     const latlngs = stops.map((p) => [p.lat, p.lon]);
+    // Prepend hub if not already the first stop
+    const first = latlngs[0];
+    if (first[0] !== hub[0] || first[1] !== hub[1]) {
+        latlngs.unshift(hub);
+    }
+
     const color = directionColor(s.direction);
 
     // Visible polyline
