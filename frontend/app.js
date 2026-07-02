@@ -57,7 +57,7 @@ async function loadData() {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         fullData = await resp.json();
         const slider = document.getElementById('time-slider');
-        slider.max = Math.min(2410, fullData.max_minutes || 2410);
+        slider.max = Math.min(2428, fullData.max_minutes || 2428);
         slider.value = 0;
     } catch (e) {
         document.getElementById('status-time').textContent = '数据加载失败';
