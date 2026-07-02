@@ -9,6 +9,8 @@ venv/
 # Data — local only, never commit
 data/raw/
 data/test_*.png
+data/light_*.png
+data/check_*.png
 data/check_*.png
 data/final_check.png
 data/hub_zoom.png
