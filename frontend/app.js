@@ -7,8 +7,8 @@
  */
 
 const DEBOUNCE_MS = 1000;
-const PALETTE = ['#1f6feb', '#ff6b35', '#3fb950', '#a371f7', '#f78166',
-                 '#56d4dd', '#d2a8ff', '#ffd166', '#06d6a0', '#ef476f'];
+const PALETTE = ['#c14a35', '#2b6cb0', '#2c7a51', '#6b46a8', '#b7791f',
+                 '#0e7c86', '#a02e6b', '#c05621', '#2d3748', '#9b2c2c'];
 
 let fullData = null;        // {hub, max_minutes, stations: [...]}
 let map = null;
@@ -38,9 +38,9 @@ function initMap() {
         attributionControl: true,
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap contributors © CARTO',
-        subdomains: 'abcd',
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        subdomains: 'abc',
         maxZoom: 19,
     }).addTo(map);
 
@@ -191,17 +191,17 @@ function drawRoute(s) {
 
     const color = directionColor(s.direction);
 
-    // Visible polyline (with shadow underneath for visibility on dark map)
+    // Visible polyline (with white shadow underneath for visibility on light map)
     L.polyline(latlngs, {
-        color: '#000',
-        weight: 5,
-        opacity: 0.4,
+        color: '#ffffff',
+        weight: 6,
+        opacity: 0.6,
         smoothFactor: 1,
     }).addTo(reachableLayer);
     L.polyline(latlngs, {
         color,
         weight: 3,
-        opacity: 0.9,
+        opacity: 0.95,
         smoothFactor: 1,
     }).addTo(reachableLayer);
 

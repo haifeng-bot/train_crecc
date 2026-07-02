@@ -1,15 +1,15 @@
 :root {
-    --bg: #0d1117;
-    --panel: rgba(20, 24, 32, 0.92);
-    --panel-border: rgba(255, 255, 255, 0.08);
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --accent: #ff6b35;
-    --accent-glow: rgba(255, 107, 53, 0.4);
-    --route-0: #1f6feb;
-    --route-1: #ff6b35;
-    --route-2: #3fb950;
-    --route-3: #a371f7;
+    --bg: #faf6ef;
+    --panel: rgba(255, 255, 255, 0.97);
+    --panel-border: rgba(0, 0, 0, 0.10);
+    --text: #1a202c;
+    --text-dim: #718096;
+    --accent: #d33c1f;
+    --accent-glow: rgba(211, 60, 31, 0.4);
+    --route-0: #c14a35;
+    --route-1: #2b6cb0;
+    --route-2: #2c7a51;
+    --route-3: #6b46a8;
 }
 
 * { box-sizing: border-box; }
@@ -26,11 +26,11 @@ html, body {
 
 #map {
     position: absolute; inset: 0;
-    background: #1c1f26;
+    background: #e8eef5;
 }
 
 .leaflet-container {
-    background: #1c1f26;
+    background: #e8eef5;
     font-family: inherit;
 }
 
@@ -51,6 +51,7 @@ html, body {
     font-size: 18px;
     font-weight: 600;
     letter-spacing: 0.5px;
+    color: var(--text);
 }
 #status {
     display: flex;
@@ -233,11 +234,11 @@ html, body {
 
 /* ── Leaflet custom markers ────────────────────── */
 .hub-marker {
-    width: 16px; height: 16px;
+    width: 14px; height: 14px;
     background: var(--accent);
     border: 2px solid #fff;
     border-radius: 50%;
-    box-shadow: 0 0 12px var(--accent-glow), 0 0 4px var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
     position: relative;
 }
 .hub-marker::after {
@@ -255,15 +256,16 @@ html, body {
 }
 
 .station-marker {
-    width: 10px; height: 10px;
+    width: 9px; height: 9px;
     background: var(--route-0);
     border: 1.5px solid #fff;
     border-radius: 50%;
     cursor: pointer;
     transition: transform 0.15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 .station-marker:hover { transform: scale(1.5); }
-.station-marker.dimmed { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+.station-marker.dimmed { background: rgba(60, 70, 85, 0.30); border-color: rgba(60, 70, 85, 0.40); }
 
 /* Leaflet popup styling */
 .leaflet-popup-content-wrapper {
