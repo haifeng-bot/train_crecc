@@ -32,6 +32,15 @@ const TRAIN_TYPE_LEGEND = [
     { prefix: '',  label: '其他号码',             color: TRAIN_TYPE_OTHER },
 ];
 
+// The first stop of every reachable route is 芜湖 itself. Visually we want
+// the polyline to emerge from clearly outside the hub marker, so we push
+// the first vertex HUB_PX_OFFSET pixels outward (in the current zoom's
+// screen-pixel space) along the line's direction. The offset is a screen-
+// pixel distance, NOT a fixed lat/lng distance, so it has to be re-applied
+// every time the zoom changes — otherwise zooming out would shrink the
+// visible gap and the hub would swallow the line head.
+const HUB_PX_OFFSET = 22;
+
 const DEBOUNCE_MS = 1000;
 
 // Tick labels shown under the slider, in minutes. The slider's native
@@ -106,6 +115,11 @@ function initMap() {
     map.on('click', (e) => {
         deselectRoute();
     });
+
+    // Keep hub-to-line gap constant across zoom changes. Without this, a
+    // polyline drawn at zoom 11 would render with a 1.4 px gap at zoom 7
+    // and the hub would swallow the line head.
+    map.on('zoomend', recomputeRouteOffsets);
 
     // Legend in top-left
     initLegend();
@@ -296,20 +310,10 @@ function drawRoute(s) {
     // clearly outside the hub marker + its box-shadow halo. 22 px is enough
     // to clear the .hub-marker core (7 px) plus its 8 px box-shadow (≈15 px
     // total visible radius), and stays cleared even at max zoom where the
-    // pulsing ring ::after is at its 2× scale.
-    const HUB_PX_OFFSET = 22;
-    if (latlngs.length >= 2) {
-        const hubPx = map.latLngToLayerPoint(hub);
-        const secondPx = map.latLngToLayerPoint(latlngs[1]);
-        const dx = secondPx.x - hubPx.x;
-        const dy = secondPx.y - hubPx.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const offsetHubPx = L.point(
-            hubPx.x + (dx / len) * HUB_PX_OFFSET,
-            hubPx.y + (dy / len) * HUB_PX_OFFSET
-        );
-        latlngs[0] = map.layerPointToLatLng(offsetHubPx);
-    }
+    // pulsing ring ::after is at its 2× scale. The same offset is re-applied
+    // on every zoomend (see recomputeRouteOffsets) so the screen-pixel gap
+    // stays constant as the user zooms in or out.
+    offsetFirstStopFromHub(latlngs, hub);
 
     const color = trainTypeColor(s.fastest_train_code);
 
@@ -349,6 +353,52 @@ function drawRoute(s) {
 
     // Persist the original color so deselect can restore it.
     routeLayerRegistry.set(s.id, { shadow, visible, hit, color });
+}
+
+/* ── Hub offset (re-applied on every zoom change) ─────────── */
+
+// Push the first vertex of a polyline outward from the hub so the line
+// starts HUB_PX_OFFSET pixels (in current screen space) away from the hub
+// marker. Mutates latlngs[0] in place.
+function offsetFirstStopFromHub(latlngs, hub) {
+    if (latlngs.length < 2) return;
+    const hubPx = map.latLngToLayerPoint(hub);
+    const secondPx = map.latLngToLayerPoint(latlngs[1]);
+    const dx = secondPx.x - hubPx.x;
+    const dy = secondPx.y - hubPx.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const offsetHubPx = L.point(
+        hubPx.x + (dx / len) * HUB_PX_OFFSET,
+        hubPx.y + (dy / len) * HUB_PX_OFFSET
+    );
+    latlngs[0] = map.layerPointToLatLng(offsetHubPx);
+}
+
+// Re-apply the hub offset to every polyline in the registry. Called on
+// zoomend (and after fitMapToView via the same event) so the screen-pixel
+// gap between hub and line head stays constant regardless of zoom level.
+// Without this, a polyline drawn at zoom 11 with a 22 px gap would render
+// as a ~1.4 px gap after fitBounds zoomed out to zoom 7, and the hub would
+// swallow the line head.
+function recomputeRouteOffsets() {
+    if (!fullData || routeLayerRegistry.size === 0) return;
+    const hub = [fullData.hub.lat, fullData.hub.lon];
+    routeLayerRegistry.forEach((layers) => {
+        const latlngs = layers.visible.getLatLngs();
+        if (!latlngs || latlngs.length < 2) return;
+        offsetFirstStopFromHub(latlngs, hub);
+        layers.visible.setLatLngs(latlngs);
+        if (layers.shadow) {
+            const sLats = layers.shadow.getLatLngs();
+            sLats[0] = latlngs[0];
+            layers.shadow.setLatLngs(sLats);
+        }
+        if (layers.hit) {
+            const hLats = layers.hit.getLatLngs();
+            hLats[0] = latlngs[0];
+            layers.hit.setLatLngs(hLats);
+        }
+    });
 }
 
 function trainTypeColor(code) {
