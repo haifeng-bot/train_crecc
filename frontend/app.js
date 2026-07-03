@@ -12,9 +12,27 @@
  *   - ESC / blank-map click / close button → deselect
  */
 
+// Train type → colour mapping (by code prefix)
+const TRAIN_TYPE_COLORS = {
+    G: '#d33c1f',   // 高速动车组 / 高铁
+    D: '#2563eb',   // 动车组
+    C: '#0891b2',   // 城际列车
+    Z: '#7c3aed',   // 直达特快
+    T: '#ea580c',   // 特快
+    K: '#16a34a',   // 快速
+};
+const TRAIN_TYPE_OTHER = '#6b7280';  // 普通旅客列车等
+const TRAIN_TYPE_LEGEND = [
+    { prefix: 'G', label: 'G — 高速动车组 (高铁)', color: TRAIN_TYPE_COLORS.G },
+    { prefix: 'D', label: 'D — 动车组',           color: TRAIN_TYPE_COLORS.D },
+    { prefix: 'C', label: 'C — 城际列车',         color: TRAIN_TYPE_COLORS.C },
+    { prefix: 'Z', label: 'Z — 直达特快',         color: TRAIN_TYPE_COLORS.Z },
+    { prefix: 'T', label: 'T — 特快',             color: TRAIN_TYPE_COLORS.T },
+    { prefix: 'K', label: 'K — 快速',             color: TRAIN_TYPE_COLORS.K },
+    { prefix: '',  label: '其他号码',             color: TRAIN_TYPE_OTHER },
+];
+
 const DEBOUNCE_MS = 1000;
-const PALETTE = ['#c14a35', '#2b6cb0', '#2c7a51', '#6b46a8', '#b7791f',
-                 '#0e7c86', '#a02e2e', '#c05621', '#2d3748', '#9b2c2c'];
 
 let fullData = null;        // {hub, max_minutes, stations: [...]}
 let map = null;
@@ -63,11 +81,11 @@ function initMap() {
 
     // Click on empty map → deselect
     map.on('click', (e) => {
-        // Only deselect when clicking the map background, not a marker/polyline
-        // (those handle their own click → selectRoute, and stop propagation
-        // is implicit via L.DomEvent)
         deselectRoute();
     });
+
+    // Legend in top-left
+    initLegend();
 }
 
 async function loadData() {
@@ -112,7 +130,7 @@ function renderAllStations() {
 }
 
 function makeStationMarker(s, isReachable) {
-    const bg = isReachable ? directionColor(s.direction) : '';
+    const bg = isReachable ? trainTypeColor(s.fastest_train_code) : '';
     const cls = isReachable ? '' : 'dimmed';
     const icon = L.divIcon({
         className: 'station-icon',
@@ -237,7 +255,7 @@ function drawRoute(s) {
         latlngs[0] = map.layerPointToLatLng(offsetHubPx);
     }
 
-    const color = directionColor(s.direction);
+    const color = trainTypeColor(s.fastest_train_code);
 
     // Visible polyline (with subtle white shadow underneath for contrast)
     const shadow = L.polyline(latlngs, {
@@ -273,12 +291,14 @@ function drawRoute(s) {
         selectRoute(s);
     });
 
-    routeLayerRegistry.set(s.id, { shadow, visible, hit });
+    // Persist the original color so deselect can restore it.
+    routeLayerRegistry.set(s.id, { shadow, visible, hit, color });
 }
 
-function directionColor(d) {
-    const m = { N: 8, NE: 5, E: 0, SE: 7, S: 2, SW: 3, W: 6, NW: 1 };
-    return PALETTE[m[d]] || PALETTE[0];
+function trainTypeColor(code) {
+    if (!code || code.length === 0) return TRAIN_TYPE_OTHER;
+    const prefix = code[0];
+    return TRAIN_TYPE_COLORS[prefix] || TRAIN_TYPE_OTHER;
 }
 
 function updateSidebar(reachable) {
@@ -317,12 +337,12 @@ function focusStation(s) {
 // Default visual state for a non-selected reachable route
 const ROUTE_STYLE_DEFAULT = { opacity: 1,    weight: 3.5 };
 const SHADOW_STYLE_DEFAULT = { opacity: 0.85, weight: 5   };
-// Dimmed state (other routes when something is selected)
-const ROUTE_STYLE_DIM     = { opacity: 0.12, weight: 3.5 };
-const SHADOW_STYLE_DIM    = { opacity: 0.10, weight: 5   };
-// Highlighted state (the selected route)
-const ROUTE_STYLE_ACTIVE  = { opacity: 1,    weight: 5   };
-const SHADOW_STYLE_ACTIVE = { opacity: 0.95, weight: 7   };
+// Dimmed state (other routes when something is selected) — greyed out
+const ROUTE_STYLE_DIM     = { opacity: 0.15, weight: 3.5, color: '#6b7280' };
+const SHADOW_STYLE_DIM    = { opacity: 0.10, weight: 5,   color: '#6b7280' };
+// Highlighted state (the selected route) — fatter stroke, keep original train type colour
+const ROUTE_STYLE_ACTIVE  = { opacity: 1,    weight: 6.5 };
+const SHADOW_STYLE_ACTIVE = { opacity: 0.95, weight: 9,   color: '#ffffff'      };
 
 function selectRoute(station) {
     selectedStation = station;
@@ -346,7 +366,8 @@ function applySelectionState(n) {
     routeLayerRegistry.forEach((layers, stationId) => {
         const isSelected = stationId === selectedId;
         if (isSelected) {
-            layers.visible.setStyle(ROUTE_STYLE_ACTIVE);
+            // Selected route: fatter stroke, keep original train type colour
+            layers.visible.setStyle({ ...ROUTE_STYLE_ACTIVE, color: layers.color });
             layers.shadow.setStyle(SHADOW_STYLE_ACTIVE);
             // bring selected to front so it sits on top of dimmed siblings
             layers.visible.bringToFront();
@@ -413,6 +434,23 @@ function renderDetailPanel(station, n) {
     panel.classList.remove('hidden');
 }
 
+/* ── Legend (top-left) ────────────────────────── */
+
+function initLegend() {
+    const container = L.DomUtil.create('div', 'train-type-legend');
+    container.innerHTML = TRAIN_TYPE_LEGEND.map(({ prefix, label, color }) =>
+        `<div class="legend-row">` +
+        `<span class="legend-swatch" style="background:${color}"></span>` +
+        `<span class="legend-label">${label}</span>` +
+        `</div>`
+    ).join('');
+    // Attach to top-left corner as a Leaflet control
+    const LegendControl = L.Control.extend({
+        onAdd() { return container; },
+    });
+    new LegendControl({ position: 'topleft' }).addTo(map);
+}
+
 function formatRunMin(min) {
     if (min === 0) return '起点';
     if (min < 60) return `+${min}m`;
@@ -435,8 +473,9 @@ function deselectRoute() {
     // class and SVG z-order would linger and (overlapping with neighbours)
     // make it look "still highlighted" even though opacity/weight match.
     routeLayerRegistry.forEach((layers, stationId) => {
-        layers.visible.setStyle(ROUTE_STYLE_DEFAULT);
-        layers.shadow.setStyle(SHADOW_STYLE_DEFAULT);
+        // Restore the original per-direction color.
+        layers.visible.setStyle({ ...ROUTE_STYLE_DEFAULT, color: layers.color });
+        layers.shadow.setStyle({ ...SHADOW_STYLE_DEFAULT, color: '#ffffff' });
         if (stationId === prevId) {
             // Undo the bringToFront that applySelectionState did on select,
             // so the previously-selected polyline returns to its natural

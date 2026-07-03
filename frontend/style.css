@@ -387,3 +387,32 @@ body.route-selected .marker-other {
     background: rgba(60, 70, 85, 0.30) !important;
     border-color: rgba(60, 70, 85, 0.40) !important;
 }
+
+/* ── Train type legend ──────────────────────────── */
+.train-type-legend {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.legend-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 4px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.legend-label {
+    color: var(--text);
+}
