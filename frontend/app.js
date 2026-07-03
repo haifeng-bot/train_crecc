@@ -34,6 +34,27 @@ const TRAIN_TYPE_LEGEND = [
 
 const DEBOUNCE_MS = 1000;
 
+// Tick labels shown under the slider, in minutes. The slider's native
+// thumb position is rendered linearly (value/max), but the tick labels are
+// laid out with `space-between` so they're equally spaced visually. To make
+// them match, the slider value is mapped to minutes through a piecewise-
+// linear function anchored on these tick positions. Net effect: the "60" tick
+// sits at slider thumb position 8.3% (1/12) of the way along, "120" at 16.7%
+// (2/12), and so on — and dragging the thumb to that position produces
+// exactly 60 / 120 / ... minutes of reachability, not a different value.
+const TICKS = [0, 60, 120, 240, 360, 480, 600, 720, 960, 1200, 1440, 1920, 2428];
+const SLIDER_MAX = 1000;
+
+function posToMin(pos) {
+    // Map [0, SLIDER_MAX] → [0, len-1] segments, then linearly interpolate
+    // within the segment so the endpoints land exactly on TICKS values.
+    pos = Math.max(0, Math.min(SLIDER_MAX, pos));
+    const p = pos / SLIDER_MAX * (TICKS.length - 1);
+    const i = Math.min(Math.floor(p), TICKS.length - 2);
+    const t = p - i;
+    return Math.round(TICKS[i] + (TICKS[i + 1] - TICKS[i]) * t);
+}
+
 let fullData = null;        // {hub, max_minutes, stations: [...]}
 let map = null;
 let stationLayer = null;    // L.layerGroup of all station markers
@@ -97,7 +118,7 @@ async function loadData() {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         fullData = await resp.json();
         const slider = document.getElementById('time-slider');
-        slider.max = Math.min(2428, fullData.max_minutes || 2428);
+        slider.max = SLIDER_MAX;
         slider.value = 0;
         renderDataSubtitle(fullData);
     } catch (e) {
@@ -185,7 +206,7 @@ function stationPopupHtml(s) {
 function setupSlider() {
     const slider = document.getElementById('time-slider');
     slider.addEventListener('input', (e) => {
-        const n = parseInt(e.target.value, 10);
+        const n = posToMin(parseInt(e.target.value, 10));
         document.getElementById('time-display').textContent = n;
         clearTimeout(sliderTimeout);
         showLoading(true);
@@ -380,7 +401,7 @@ function selectRoute(station) {
 
     // 2. Apply dim/highlight to map
     const slider = document.getElementById('time-slider');
-    const n = parseInt(slider.value, 10);
+    const n = posToMin(parseInt(slider.value, 10));
     applySelectionState(n);
 }
 
