@@ -314,6 +314,16 @@ function focusStation(s) {
 
 /* ── Selection / detail panel ────────────────── */
 
+// Default visual state for a non-selected reachable route
+const ROUTE_STYLE_DEFAULT = { opacity: 1,    weight: 3.5 };
+const SHADOW_STYLE_DEFAULT = { opacity: 0.85, weight: 5   };
+// Dimmed state (other routes when something is selected)
+const ROUTE_STYLE_DIM     = { opacity: 0.12, weight: 3.5 };
+const SHADOW_STYLE_DIM    = { opacity: 0.10, weight: 5   };
+// Highlighted state (the selected route)
+const ROUTE_STYLE_ACTIVE  = { opacity: 1,    weight: 5   };
+const SHADOW_STYLE_ACTIVE = { opacity: 0.95, weight: 7   };
+
 function selectRoute(station) {
     selectedStation = station;
 
@@ -331,26 +341,24 @@ function applySelectionState(n) {
 
     document.body.classList.add('route-selected');
 
-    // Dim all routes except the selected one
+    // Apply dim/highlight to every route in the registry
+    const selectedId = selectedStation.id;
     routeLayerRegistry.forEach((layers, stationId) => {
-        const isSelected = stationId === selectedStation.id;
-        layers.visible.setStyle({
-            opacity: isSelected ? 1 : 0.12,
-            weight: isSelected ? 5 : 3.5,
-        });
-        layers.shadow.setStyle({
-            opacity: isSelected ? 0.95 : 0.10,
-            weight: isSelected ? 7 : 5,
-        });
-        // bring selected to front
+        const isSelected = stationId === selectedId;
         if (isSelected) {
+            layers.visible.setStyle(ROUTE_STYLE_ACTIVE);
+            layers.shadow.setStyle(SHADOW_STYLE_ACTIVE);
+            // bring selected to front so it sits on top of dimmed siblings
             layers.visible.bringToFront();
             layers.shadow.bringToFront();
+        } else {
+            layers.visible.setStyle(ROUTE_STYLE_DIM);
+            layers.shadow.setStyle(SHADOW_STYLE_DIM);
         }
     });
 
     // Dim all station markers except the endpoints of the selected route
-    const highlightIds = new Set([selectedStation.id]);
+    const highlightIds = new Set([selectedId]);
     if (selectedStation.route) {
         selectedStation.route.forEach((stop) => {
             // Find station id by lat/lon match
@@ -375,7 +383,7 @@ function applySelectionState(n) {
 
     // Update sidebar selection marker
     document.querySelectorAll('#station-list li').forEach((li) => {
-        li.classList.toggle('selected', parseInt(li.dataset.stationId, 10) === selectedStation.id);
+        li.classList.toggle('selected', parseInt(li.dataset.stationId, 10) === selectedId);
     });
 }
 
@@ -415,14 +423,27 @@ function formatRunMin(min) {
 
 function deselectRoute() {
     if (!selectedStation) return;
+    // Capture the id BEFORE clearing selectedStation so we can un-z-order
+    // the previously-highlighted polyline explicitly.
+    const prevId = selectedStation.id;
     selectedStation = null;
     document.body.classList.remove('route-selected');
     document.getElementById('detail-panel').classList.add('hidden');
 
-    // Reset route opacities
-    routeLayerRegistry.forEach((layers) => {
-        layers.visible.setStyle({ opacity: 1, weight: 3.5 });
-        layers.shadow.setStyle({ opacity: 0.85, weight: 5 });
+    // Reset ALL route layers to their default state — including the
+    // previously-selected one. Without resetting it, its `.leaflet-front`
+    // class and SVG z-order would linger and (overlapping with neighbours)
+    // make it look "still highlighted" even though opacity/weight match.
+    routeLayerRegistry.forEach((layers, stationId) => {
+        layers.visible.setStyle(ROUTE_STYLE_DEFAULT);
+        layers.shadow.setStyle(SHADOW_STYLE_DEFAULT);
+        if (stationId === prevId) {
+            // Undo the bringToFront that applySelectionState did on select,
+            // so the previously-selected polyline returns to its natural
+            // draw order in the overlay pane.
+            layers.visible.bringToBack();
+            layers.shadow.bringToBack();
+        }
     });
 
     // Reset markers
