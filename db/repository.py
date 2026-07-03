@@ -380,6 +380,7 @@ def export_reach_json(
             },
             "max_minutes": max_minutes,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            "last_updated": get_meta("last_updated", conn=conn),
             "station_count": len(stations_out),
             "stations": stations_out,
         }

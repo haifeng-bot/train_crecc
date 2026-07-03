@@ -53,6 +53,17 @@ html, body {
     letter-spacing: 0.5px;
     color: var(--text);
 }
+.topbar-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.topbar-title .subtitle {
+    margin-left: 56px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+}
 #status {
     display: flex;
     gap: 16px;
