@@ -501,12 +501,12 @@ function renderDetailPanel(station, n) {
 //                or the configured max), so the user can see the hub as a
 //                single point. No routes are drawn at n=0, so this is purely
 //                a "start state" view.
-//   - n  >  0  → fit bounds to all reachable stations + the hub, with 20% of
+//   - n  >  0  → fit bounds to all reachable stations + the hub, with 5% of
 //                the map's screen size as padding on every side. That keeps
-//                every line fully inside the viewport with breathing room,
-//                regardless of how far the routes spread. The centre shifts
-//                to whatever the bounds' centre is (may no longer be the hub
-//                if the reachable set is asymmetric).
+//                every line fully inside the viewport with a small breathing
+//                margin, regardless of how far the routes spread. The centre
+//                shifts to whatever the bounds' centre is (may no longer be
+//                the hub if the reachable set is asymmetric).
 // Stations on the very edge of the reachable set (the furthest ones) define
 // the bounds, so even a long single route to e.g. 哈尔滨 will pull the view
 // to the north-east and the padding keeps the line endpoint from touching
@@ -526,11 +526,11 @@ function fitMapToView(n, reachable) {
     const bounds = L.latLngBounds([hubLatLng]);
     reachable.forEach((s) => bounds.extend([s.lat, s.lon]));
 
-    // Pad the fit by 20% of the map's current screen size on every side. The
+    // Pad the fit by 5% of the map's current screen size on every side. The
     // shape stays rectangular so we can use Leaflet's symmetric padding.
     const sz = map.getSize();
-    const padX = Math.round(sz.x * 0.2);
-    const padY = Math.round(sz.y * 0.2);
+    const padX = Math.round(sz.x * 0.05);
+    const padY = Math.round(sz.y * 0.05);
     map.fitBounds(bounds, {
         padding: L.point(padX, padY),
         animate: true,
