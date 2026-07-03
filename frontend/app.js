@@ -71,6 +71,14 @@ let reachableLayer = null;  // L.layerGroup of reachable stations + routes
 let sidebarList = null;
 let sliderTimeout = null;
 
+// Sidebar search/filter state. The filter applies to the list of reachable
+// stations shown in the sidebar only — the map continues to display the
+// full reachable set, since the filter is a navigation aid, not a subset
+// view. The filter is preserved across slider changes so the user can type
+// "杭州" once and see the matching stations update as the reach grows.
+let sidebarFilter = '';        // current lower-cased search text
+let lastReachable = [];        // most recent reachable set passed to updateSidebar
+
 // Selection state
 let selectedStation = null;     // station object
 let routeLayerRegistry = new Map();   // station_id → array of polylines (shadow + visible + hit)
@@ -244,6 +252,14 @@ function setupSidebar() {
         document.getElementById('sidebar').classList.remove('collapsed');
         document.getElementById('open-sidebar').hidden = true;
     });
+
+    // Live text filter — each keystroke re-renders the list (no debounce:
+    // filtering 600 items in JS is essentially free).
+    const search = document.getElementById('station-search');
+    search.addEventListener('input', (e) => {
+        sidebarFilter = e.target.value.trim().toLowerCase();
+        renderSidebar();
+    });
 }
 
 function setupDetailPanel() {
@@ -407,8 +423,41 @@ function trainTypeColor(code) {
 }
 
 function updateSidebar(reachable) {
+    // Remember the new reachable set so subsequent filter edits can re-render
+    // against the same data.
+    lastReachable = reachable;
+    renderSidebar();
+}
+
+function renderSidebar() {
     sidebarList.innerHTML = '';
-    reachable.forEach((s) => {
+
+    // Apply the text filter (case-insensitive substring match on name + city).
+    const q = sidebarFilter;
+    const filtered = q
+        ? lastReachable.filter((s) =>
+            (s.name || '').toLowerCase().includes(q) ||
+            (s.city || '').toLowerCase().includes(q)
+          )
+        : lastReachable;
+
+    // Update the count badge in the search input.
+    const countEl = document.getElementById('search-count');
+    if (countEl) {
+        countEl.textContent = q
+            ? `${filtered.length}/${lastReachable.length}`
+            : `${lastReachable.length}`;
+    }
+
+    if (filtered.length === 0 && q) {
+        const li = document.createElement('li');
+        li.className = 'no-match';
+        li.textContent = `没有匹配 “${q}” 的车站`;
+        sidebarList.appendChild(li);
+        return;
+    }
+
+    filtered.forEach((s) => {
         const li = document.createElement('li');
         li.dataset.stationId = s.id;
         li.innerHTML = `

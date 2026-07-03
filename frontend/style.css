@@ -102,6 +102,59 @@ html, body {
     font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1;
 }
 #close-sidebar:hover { color: var(--text); }
+
+/* ── Sidebar search input ────────────────────── */
+.sidebar-search {
+    position: relative;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--panel-border);
+}
+#station-search {
+    width: 100%;
+    padding: 6px 30px 6px 10px;     /* right padding leaves room for the count badge */
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+}
+#station-search:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: #fff;
+}
+#station-search::placeholder { color: var(--text-dim); }
+/* Suppress the default "× clear" button on WebKit search inputs — we use a
+   custom count badge in the same spot. */
+#station-search::-webkit-search-cancel-button { -webkit-appearance: none; }
+.search-count {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--text-dim);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+#station-list li.no-match {
+    color: var(--text-dim);
+    text-align: center;
+    padding: 24px 16px;
+    font-size: 12px;
+    cursor: default;
+    border-left: none;
+}
+#station-list li.no-match:hover {
+    background: transparent;
+    border-left-color: transparent;
+}
+
 #station-list {
     list-style: none;
     margin: 0; padding: 8px 0;
