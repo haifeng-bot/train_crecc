@@ -67,6 +67,8 @@ function initMap() {
         zoomControl: true,
         attributionControl: true,
     });
+    // Push the attribution to bottom-left so the legend (bottom-right) has room
+    map.attributionControl.setPosition('bottomleft');
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
@@ -340,9 +342,13 @@ const SHADOW_STYLE_DEFAULT = { opacity: 0.85, weight: 5   };
 // Dimmed state (other routes when something is selected) — greyed out
 const ROUTE_STYLE_DIM     = { opacity: 0.15, weight: 3.5, color: '#6b7280' };
 const SHADOW_STYLE_DIM    = { opacity: 0.10, weight: 5,   color: '#6b7280' };
-// Highlighted state (the selected route) — fatter stroke, keep original train type colour
+// Highlighted state (the selected route) — fatter stroke, keep original train type colour.
+// Shadow stays white but light, just enough for a subtle outline halo — at higher
+// opacity the white shadow overpowered the lighter train type colours (C cyan,
+// K grey, Z purple) and made the line look pure white. Keep shadow weight just
+// slightly wider than the visible stroke so only ~1px of white halo shows.
 const ROUTE_STYLE_ACTIVE  = { opacity: 1,    weight: 6.5 };
-const SHADOW_STYLE_ACTIVE = { opacity: 0.95, weight: 9,   color: '#ffffff'      };
+const SHADOW_STYLE_ACTIVE = { opacity: 0.4,  weight: 8,   color: '#ffffff'      };
 
 function selectRoute(station) {
     selectedStation = station;
@@ -448,7 +454,7 @@ function initLegend() {
     const LegendControl = L.Control.extend({
         onAdd() { return container; },
     });
-    new LegendControl({ position: 'topleft' }).addTo(map);
+    new LegendControl({ position: 'bottomright' }).addTo(map);
 }
 
 function formatRunMin(min) {
