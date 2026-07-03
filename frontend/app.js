@@ -171,7 +171,11 @@ function renderAllStations() {
         markerRegistry.set(s.id, m);
     });
 
-    map.fitBounds([[18, 75], [54, 135]]);
+    // Note: the map's initial view is set by updateVisualization(0) at the
+    // bottom of init() — that path calls fitMapToView, which centres on the
+    // hub at maxZoom. We deliberately do NOT fitBounds to all of China
+    // here; the user's brief is to start tight on 芜湖 and let the view
+    // expand as the slider increases.
 }
 
 function makeStationMarker(s, isReachable) {
@@ -273,7 +277,10 @@ function updateVisualization(n) {
         applySelectionState(n);
     }
 
-    // 5. Auto-hide loading
+    // 5. Fit the map to the current reachable set (or to the hub at n=0)
+    fitMapToView(n, reachable);
+
+    // 6. Auto-hide loading
     setTimeout(() => showLoading(false), 80);
 }
 
@@ -285,8 +292,12 @@ function drawRoute(s) {
     const latlngs = stops.map((p) => [p.lat, p.lon]);
 
     // The backend puts 芜湖 at route[0]. Visually offset the hub point
-    // outward (12 px toward the first non-hub stop) so the polyline
-    // emerges from clearly outside the 16px hub marker.
+    // outward toward the first non-hub stop so the polyline emerges from
+    // clearly outside the hub marker + its box-shadow halo. 22 px is enough
+    // to clear the .hub-marker core (7 px) plus its 8 px box-shadow (≈15 px
+    // total visible radius), and stays cleared even at max zoom where the
+    // pulsing ring ::after is at its 2× scale.
+    const HUB_PX_OFFSET = 22;
     if (latlngs.length >= 2) {
         const hubPx = map.latLngToLayerPoint(hub);
         const secondPx = map.latLngToLayerPoint(latlngs[1]);
@@ -294,8 +305,8 @@ function drawRoute(s) {
         const dy = secondPx.y - hubPx.y;
         const len = Math.hypot(dx, dy) || 1;
         const offsetHubPx = L.point(
-            hubPx.x + (dx / len) * 12,
-            hubPx.y + (dy / len) * 12
+            hubPx.x + (dx / len) * HUB_PX_OFFSET,
+            hubPx.y + (dy / len) * HUB_PX_OFFSET
         );
         latlngs[0] = map.layerPointToLatLng(offsetHubPx);
     }
@@ -481,6 +492,50 @@ function renderDetailPanel(station, n) {
 
     const panel = document.getElementById('detail-panel');
     panel.classList.remove('hidden');
+}
+
+/* ── Map view fitting ─────────────────────────── */
+
+// View-fitting policy:
+//   - n === 0  → reset to the tightest view centred on the hub (maxZoom=11
+//                or the configured max), so the user can see the hub as a
+//                single point. No routes are drawn at n=0, so this is purely
+//                a "start state" view.
+//   - n  >  0  → fit bounds to all reachable stations + the hub, with 20% of
+//                the map's screen size as padding on every side. That keeps
+//                every line fully inside the viewport with breathing room,
+//                regardless of how far the routes spread. The centre shifts
+//                to whatever the bounds' centre is (may no longer be the hub
+//                if the reachable set is asymmetric).
+// Stations on the very edge of the reachable set (the furthest ones) define
+// the bounds, so even a long single route to e.g. 哈尔滨 will pull the view
+// to the north-east and the padding keeps the line endpoint from touching
+// the edge.
+function fitMapToView(n, reachable) {
+    if (!fullData) return;
+    const hubLatLng = [fullData.hub.lat, fullData.hub.lon];
+
+    if (n === 0) {
+        // Tight hub-centred view at the maximum zoom. No animation — this is
+        // the initial state of the app and we want it set immediately.
+        map.setView(hubLatLng, map.getMaxZoom(), { animate: false });
+        return;
+    }
+
+    // Build a bounds object from the hub + every reachable station.
+    const bounds = L.latLngBounds([hubLatLng]);
+    reachable.forEach((s) => bounds.extend([s.lat, s.lon]));
+
+    // Pad the fit by 20% of the map's current screen size on every side. The
+    // shape stays rectangular so we can use Leaflet's symmetric padding.
+    const sz = map.getSize();
+    const padX = Math.round(sz.x * 0.2);
+    const padY = Math.round(sz.y * 0.2);
+    map.fitBounds(bounds, {
+        padding: L.point(padX, padY),
+        animate: true,
+        duration: 0.6,
+    });
 }
 
 /* ── Legend (top-left) ────────────────────────── */
