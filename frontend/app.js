@@ -39,7 +39,7 @@ const TRAIN_TYPE_LEGEND = [
 // pixel distance, NOT a fixed lat/lng distance, so it has to be re-applied
 // every time the zoom changes — otherwise zooming out would shrink the
 // visible gap and the hub would swallow the line head.
-const HUB_PX_OFFSET = 22;
+const HUB_PX_OFFSET = 2;
 
 const DEBOUNCE_MS = 1000;
 
@@ -307,10 +307,9 @@ function drawRoute(s) {
 
     // The backend puts 芜湖 at route[0]. Visually offset the hub point
     // outward toward the first non-hub stop so the polyline emerges from
-    // clearly outside the hub marker + its box-shadow halo. 22 px is enough
-    // to clear the .hub-marker core (7 px) plus its 8 px box-shadow (≈15 px
-    // total visible radius), and stays cleared even at max zoom where the
-    // pulsing ring ::after is at its 2× scale. The same offset is re-applied
+    // clearly outside the hub marker + its box-shadow halo. 2 px is a
+    // minimal nudge — it just clears the marker by a couple of pixels so
+    // the line head doesn't tuck under the hub. The same offset is re-applied
     // on every zoomend (see recomputeRouteOffsets) so the screen-pixel gap
     // stays constant as the user zooms in or out.
     offsetFirstStopFromHub(latlngs, hub);
