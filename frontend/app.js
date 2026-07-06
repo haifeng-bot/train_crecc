@@ -179,9 +179,21 @@ async function loadData() {
         fullData = await resp.json();
         // Update the upper bound based on the data's max_minutes so the
         // slider's range reflects what's actually reachable from the hub.
+        const oldMax = maxMinutes;
         maxMinutes = fullData.max_minutes ?? maxMinutes;
-        if (timeSlider && timeSlider.noUiSlider) {
-            timeSlider.noUiSlider.updateOptions({ range: { min: 0, max: maxMinutes } });
+        if (timeSlider && timeSlider.noUiSlider && maxMinutes !== oldMax) {
+            // Preserve the piecewise breakpoints proportionally: the last
+            // segment stretches to maxMinutes instead of the hardcoded 2428.
+            timeSlider.noUiSlider.updateOptions({
+                range: {
+                    min: 0,
+                    '20%': 120,
+                    '40%': 360,
+                    '60%': 720,
+                    '80%': 1440,
+                    max: maxMinutes,
+                },
+            });
             timeSlider.noUiSlider.set(0);
         }
         renderDataSubtitle(fullData);
@@ -279,7 +291,22 @@ function setupSlider() {
 
     noUiSlider.create(timeSlider, {
         start: 0,
-        range: { min: 0, max: maxMinutes },
+        // Piecewise-linear range — slow then fast. The 0–120 min stretch is
+        // the most useful for everyday reachability (catching the difference
+        // between "no station nearby" and "12 stations nearby") so it gets
+        // the largest share of track real estate. Each successive segment
+        // doubles in sensitivity, compressing the long-distance tail
+        // (24h–40h) into the last 20% of the bar. Pips are rendered at their
+        // real minute values so the thumb still parks visually under each
+        // tick label.
+        range: {
+            min: 0,
+            '20%': 120,
+            '40%': 360,
+            '60%': 720,
+            '80%': 1440,
+            max: maxMinutes,
+        },
         step: 5,
         connect: [true, false],        // fill from min to handle
         tooltips: {
@@ -718,21 +745,45 @@ function fitMapToView(n, reachable) {
     });
 }
 
-/* ── Legend (top-left) ────────────────────────── */
+/* ── Legend (collapsible, top-left below zoom) ─── */
 
 function initLegend() {
-    const container = L.DomUtil.create('div', 'train-type-legend');
-    container.innerHTML = TRAIN_TYPE_LEGEND.map(({ prefix, label, color }) =>
+    const container = L.DomUtil.create('div', 'train-type-legend collapsed');
+
+    // Toggle header — always visible. Acts as the expand/collapse trigger.
+    const toggleBtn = L.DomUtil.create('button', 'legend-toggle', container);
+    toggleBtn.type = 'button';
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    toggleBtn.setAttribute('aria-controls', 'legend-content');
+    toggleBtn.innerHTML = '<span class="legend-title">图例</span><span class="chevron">▾</span>';
+
+    // Collapsible content body
+    const content = L.DomUtil.create('div', 'legend-content', container);
+    content.id = 'legend-content';
+    content.innerHTML = TRAIN_TYPE_LEGEND.map(({ prefix, label, color }) =>
         `<div class="legend-row">` +
         `<span class="legend-swatch" style="background:${color}"></span>` +
         `<span class="legend-label">${label}</span>` +
         `</div>`
     ).join('');
-    // Attach to top-left corner as a Leaflet control
+
+    toggleBtn.addEventListener('click', () => {
+        const collapsed = container.classList.toggle('collapsed');
+        toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    });
+
+    // Stop click events from bubbling to the map (otherwise clicking the
+    // toggle would trigger deselectRoute via the map 'click' handler).
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+
+    // Attach as a Leaflet control in the top-left corner. Leaflet stacks
+    // controls in the same corner in add-order — zoom is already there by
+    // default, so this legend will sit below the +/- buttons automatically.
     const LegendControl = L.Control.extend({
         onAdd() { return container; },
     });
-    new LegendControl({ position: 'bottomright' }).addTo(map);
+    new LegendControl({ position: 'topleft' }).addTo(map);
 }
 
 function formatRunMin(min) {

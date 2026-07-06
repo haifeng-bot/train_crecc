@@ -411,11 +411,6 @@ html, body {
     opacity: 0.55;   /* subtle dim, not invisible — keeps the scale readable */
 }
 
-/* Push the bottom-right legend above the slider so it doesn't overlap. */
-.train-type-legend {
-    margin-bottom: 150px !important;
-}
-
 /* ── Leaflet custom markers ────────────────────── */
 .hub-marker {
     width: 14px; height: 14px;
@@ -567,23 +562,64 @@ body.route-selected .marker-other {
     border-color: rgba(60, 70, 85, 0.40) !important;
 }
 
-/* ── Train type legend ──────────────────────────── */
+/* ── Train type legend (collapsible, top-left below zoom) ────── */
 .train-type-legend {
     position: relative;
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 6px;
-    padding: 8px 10px;
-    font-size: 11px;
-    line-height: 1.5;
     backdrop-filter: blur(10px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    overflow: hidden;             /* clip content border-top with rounded corners */
+    font-size: 11px;
+    line-height: 1.5;
+    min-width: 110px;
+}
+
+/* Toggle header — always visible, this is what the user sees when collapsed */
+.legend-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    user-select: none;
+}
+.legend-toggle:hover .legend-title { color: var(--accent); }
+.legend-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.legend-toggle .chevron {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s ease;
+}
+.train-type-legend.collapsed .chevron {
+    transform: rotate(-90deg);
+}
+
+/* Collapsible content */
+.train-type-legend.collapsed .legend-content { display: none; }
+.legend-content {
+    padding: 6px 10px 8px;
+    border-top: 1px solid var(--panel-border);
 }
 .legend-row {
     display: flex;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+    padding: 2px 0;
 }
 .legend-swatch {
     display: inline-block;
