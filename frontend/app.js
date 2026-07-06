@@ -43,25 +43,62 @@ const HUB_PX_OFFSET = 2;
 
 const DEBOUNCE_MS = 1000;
 
-// Tick labels shown under the slider, in minutes. The slider's native
-// thumb position is rendered linearly (value/max), but the tick labels are
-// laid out with `space-between` so they're equally spaced visually. To make
-// them match, the slider value is mapped to minutes through a piecewise-
-// linear function anchored on these tick positions. Net effect: the "60" tick
-// sits at slider thumb position 8.3% (1/12) of the way along, "120" at 16.7%
-// (2/12), and so on — and dragging the thumb to that position produces
-// exactly 60 / 120 / ... minutes of reachability, not a different value.
+// Tick marks shown under the slider, in minutes. noUiSlider handles the
+// layout natively — the thumb position is mapped linearly to the slider's
+// value range (0–max_minutes), and pips are drawn at the absolute minute
+// values below, so a thumb parked at 60 minutes sits directly above the
+// "60" pip. No piecewise mapping needed.
 const TICKS = [0, 60, 120, 240, 360, 480, 600, 720, 960, 1200, 1440, 1920, 2428];
-const SLIDER_MAX = 1000;
 
-function posToMin(pos) {
-    // Map [0, SLIDER_MAX] → [0, len-1] segments, then linearly interpolate
-    // within the segment so the endpoints land exactly on TICKS values.
-    pos = Math.max(0, Math.min(SLIDER_MAX, pos));
-    const p = pos / SLIDER_MAX * (TICKS.length - 1);
-    const i = Math.min(Math.floor(p), TICKS.length - 2);
-    const t = p - i;
-    return Math.round(TICKS[i] + (TICKS[i + 1] - TICKS[i]) * t);
+// Preset buttons shown above the slider — quick-jump shortcuts for both
+// mobile users (who shouldn't have to drag a long-range slider) and desktop
+// users (one click instead of a precise drag).
+const PRESETS = [
+    { label: '1h',  min: 60   },
+    { label: '2h',  min: 120  },
+    { label: '4h',  min: 240  },
+    { label: '8h',  min: 480  },
+    { label: '12h', min: 720  },
+    { label: '24h', min: 1440 },
+    { label: '40h', min: 2428 },
+];
+
+// Read the slider's current minute value. noUiSlider exposes a numeric
+// string via .noUiSlider.get() — round to int for downstream use.
+function getSliderMinutes() {
+    return Math.round(parseFloat(timeSlider.noUiSlider.get()));
+}
+
+// Set the slider to a specific minute value and fire the same update flow
+// the drag handler uses, so the map re-renders and the preset button
+// active-state highlights in sync.
+function setSliderMinutes(min) {
+    const clamped = Math.max(0, Math.min(maxMinutes, min));
+    timeSlider.noUiSlider.set(clamped);
+    document.getElementById('time-display').textContent = clamped;
+    syncPresetActive(clamped);
+    clearTimeout(sliderTimeout);
+    showLoading(true);
+    sliderTimeout = setTimeout(() => {
+        updateVisualization(clamped);
+    }, DEBOUNCE_MS);
+}
+
+// Highlight the preset button whose value is closest to the current
+// slider position (within one step). Allows both exact matches (1h button
+// active at 60 min) and neighbouring values to share visual feedback.
+function syncPresetActive(currentMin) {
+    const presetValues = PRESETS.map(p => p.min);
+    const buttons = document.querySelectorAll('.preset-btn');
+    let bestIdx = -1, bestDist = Infinity;
+    presetValues.forEach((v, i) => {
+        const d = Math.abs(v - currentMin);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    // Only highlight if we're within 5% of the preset's full-scale value
+    // — otherwise no preset should claim the current state.
+    const closeEnough = bestDist / maxMinutes <= 0.05;
+    buttons.forEach((b, i) => b.classList.toggle('active', closeEnough && i === bestIdx));
 }
 
 let fullData = null;        // {hub, max_minutes, stations: [...]}
@@ -88,6 +125,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
     setupSlider();
+    setupPresets();
     setupSidebar();
     setupDetailPanel();
     initMap();
@@ -139,9 +177,13 @@ async function loadData() {
         const resp = await fetch('data/reach.json');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         fullData = await resp.json();
-        const slider = document.getElementById('time-slider');
-        slider.max = SLIDER_MAX;
-        slider.value = 0;
+        // Update the upper bound based on the data's max_minutes so the
+        // slider's range reflects what's actually reachable from the hub.
+        maxMinutes = fullData.max_minutes ?? maxMinutes;
+        if (timeSlider && timeSlider.noUiSlider) {
+            timeSlider.noUiSlider.updateOptions({ range: { min: 0, max: maxMinutes } });
+            timeSlider.noUiSlider.set(0);
+        }
         renderDataSubtitle(fullData);
     } catch (e) {
         document.getElementById('status-time').textContent = '数据加载失败';
@@ -227,18 +269,59 @@ function stationPopupHtml(s) {
         <em style="color:var(--text-dim);font-size:11px;">点击查看完整经停 →</em>`;
 }
 
-/* ── Slider ──────────────────────────────────── */
+/* ── Slider + Preset buttons ────────────────── */
+
+let timeSlider = null;       // the noUiSlider instance (after setupSlider)
+let maxMinutes = 2428;       // upper bound, overwritten from data when loaded
 
 function setupSlider() {
-    const slider = document.getElementById('time-slider');
-    slider.addEventListener('input', (e) => {
-        const n = posToMin(parseInt(e.target.value, 10));
+    timeSlider = document.getElementById('time-slider');
+
+    noUiSlider.create(timeSlider, {
+        start: 0,
+        range: { min: 0, max: maxMinutes },
+        step: 5,
+        connect: [true, false],        // fill from min to handle
+        tooltips: {
+            // Show "60 分钟" tooltip while the user is dragging.
+            to: (v) => `${Math.round(v)} 分钟`,
+        },
+        pips: {
+            mode: 'values',
+            values: TICKS,
+            density: 4,
+        },
+        format: { to: v => Math.round(v), from: v => Number(v) },
+    });
+
+    timeSlider.noUiSlider.on('update', (values) => {
+        const n = Math.round(parseFloat(values[0]));
         document.getElementById('time-display').textContent = n;
+    });
+
+    // 'change' fires after the user lets go (or after preset click), so
+    // we debounce only this — 'update' fires on every micro-movement and
+    // would re-render the map too aggressively.
+    timeSlider.noUiSlider.on('change', (values) => {
+        const n = Math.round(parseFloat(values[0]));
+        syncPresetActive(n);
         clearTimeout(sliderTimeout);
         showLoading(true);
         sliderTimeout = setTimeout(() => {
             updateVisualization(n);
         }, DEBOUNCE_MS);
+    });
+}
+
+function setupPresets() {
+    const row = document.getElementById('preset-row');
+    if (!row) return;
+    row.querySelectorAll('.preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const min = parseInt(btn.dataset.min, 10);
+            if (!Number.isFinite(min)) return;
+            setSliderMinutes(min);
+        });
     });
 }
 
@@ -509,8 +592,7 @@ function selectRoute(station) {
     renderDetailPanel(station);
 
     // 2. Apply dim/highlight to map
-    const slider = document.getElementById('time-slider');
-    const n = posToMin(parseInt(slider.value, 10));
+    const n = getSliderMinutes();
     applySelectionState(n);
 }
 

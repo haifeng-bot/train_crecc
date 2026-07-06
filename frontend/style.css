@@ -230,11 +230,11 @@ html, body {
     100% { transform: translateX(330%); }
 }
 
-/* ── Bottom controls (slider) ──────────────────── */
+/* ── Bottom controls (preset buttons + slider) ─── */
 #controls {
     position: absolute;
     bottom: 0; left: 0; right: 0;
-    padding: 16px 32px 24px;
+    padding: 16px 32px 20px;
     background: linear-gradient(0deg, var(--panel) 0%, rgba(20,24,32,0) 100%);
     z-index: 500;
 }
@@ -242,63 +242,178 @@ html, body {
     max-width: 900px;
     margin: 0 auto;
 }
-.slider-row label {
+
+/* Preset buttons row — quick jumps for both desktop fine-tune and mobile. */
+.preset-row {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.preset-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    padding: 4px 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+    min-width: 44px;          /* touch target */
+    min-height: 28px;
+}
+.preset-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.preset-btn:active {
+    transform: scale(0.96);
+}
+.preset-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.slider-label {
     display: block;
     text-align: center;
     font-size: 16px;
-    margin-bottom: 8px;
+    margin: 4px 0 10px;
     color: var(--text);
 }
-.slider-row label #time-display {
+.slider-label #time-display {
     color: var(--accent);
     font-size: 24px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     margin: 0 2px;
 }
+
+/* ── noUiSlider customization ──────────────────── */
+/* Layout container */
 #time-slider {
     width: 100%;
-    -webkit-appearance: none;
-    appearance: none;
+    height: 28px;        /* extra room for pips + tooltip above the handle */
+    margin: 6px 0 22px;  /* bottom margin leaves room for pips labels */
+}
+/* Track base (the rail the handle slides on) */
+#time-slider .noUi-target {
     background: transparent;
-    margin: 8px 0;
+    border: none;
+    box-shadow: none;
+    height: 8px;
 }
-#time-slider::-webkit-slider-runnable-track {
-    height: 6px;
-    background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 0%,
-                                       rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.15) 100%);
-    border-radius: 3px;
+/* Unselected portion of the track */
+#time-slider .noUi-base {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
 }
-#time-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 22px; height: 22px;
-    background: var(--accent);
+/* Selected portion (left of handle) */
+#time-slider .noUi-connect {
+    background: linear-gradient(90deg, var(--accent), #ff7a4a);
+    box-shadow: 0 0 8px var(--accent-glow);
+    border-radius: 4px 0 0 4px;
+}
+/* The draggable handle */
+#time-slider .noUi-handle {
+    width: 22px !important;
+    height: 22px !important;
+    right: -11px !important;     /* center the handle on the value */
+    top: -7px !important;        /* center vertically on the 8px track */
     border: 2px solid #fff;
-    border-radius: 50%;
-    margin-top: -8px;
-    cursor: pointer;
-    box-shadow: 0 0 12px var(--accent-glow);
-}
-#time-slider::-moz-range-track {
-    height: 6px;
-    background: rgba(255,255,255,0.15);
-    border-radius: 3px;
-}
-#time-slider::-moz-range-thumb {
-    width: 22px; height: 22px;
     background: var(--accent);
-    border: 2px solid #fff;
     border-radius: 50%;
-    cursor: pointer;
     box-shadow: 0 0 12px var(--accent-glow);
+    cursor: grab;
+    transition: transform 0.05s;
 }
-.tick-row {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 6px;
-    font-size: 9px;
-    color: var(--text-dim);
+#time-slider .noUi-handle:active { cursor: grabbing; transform: scale(1.1); }
+#time-slider .noUi-handle::before,
+#time-slider .noUi-handle::after { display: none; }   /* remove noUi default side bars */
+
+/* Tooltip floating above the handle showing current value */
+#time-slider .noUi-tooltip {
+    display: block;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
     font-variant-numeric: tabular-nums;
+}
+#time-slider .noUi-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%; left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--text);
+}
+/* Hide the tooltip when slider is inactive, show on hover/drag.
+   noUiSlider toggles a `.noUi-active` class on the .noUi-handle while
+   the user is interacting. */
+#time-slider .noUi-tooltip {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+#time-slider .noUi-handle.noUi-active .noUi-tooltip,
+#time-slider .noUi-handle:hover .noUi-tooltip {
+    opacity: 1;
+}
+/* Always show on touch devices (no :hover) */
+@media (hover: none) {
+    #time-slider .noUi-tooltip { opacity: 1; }
+}
+
+/* Pips (tick marks + value labels) */
+#time-slider .noUi-pips {
+    height: 30px;
+    padding-top: 8px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+#time-slider .noUi-marker {
+    width: 1px;
+    height: 6px;
+    background: var(--text-dim);
+    opacity: 0.5;
+}
+/* Major ticks get a longer line */
+#time-slider .noUi-marker.noUi-marker-large {
+    height: 10px;
+    opacity: 0.7;
+    background: var(--text);
+}
+#time-slider .noUi-value {
+    padding-top: 4px;
+    color: var(--text-dim);
+    transform: translate(-50%, 0);
+}
+/* Specific dense ticks get squashed labels — noUi doesn't have built-in
+   anti-collision so we hide the value of every other tick to keep it readable */
+#time-slider .noUi-pips .noUi-value:nth-child(odd) {
+    opacity: 0.55;   /* subtle dim, not invisible — keeps the scale readable */
+}
+
+/* Push the bottom-right legend above the slider so it doesn't overlap. */
+.train-type-legend {
+    margin-bottom: 150px !important;
 }
 
 /* ── Leaflet custom markers ────────────────────── */

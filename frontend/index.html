@@ -6,6 +6,7 @@
     <title>芜湖高铁通达性地图</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.css" />
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -56,33 +57,28 @@
         <ol id="detail-stops"></ol>
     </aside>
 
-    <!-- Bottom: time slider -->
+    <!-- Bottom: preset buttons + time slider -->
     <footer id="controls">
         <div class="slider-row">
-            <label for="time-slider">
+            <div class="preset-row" id="preset-row" role="group" aria-label="快速跳转">
+                <button type="button" class="preset-btn" data-min="60">1h</button>
+                <button type="button" class="preset-btn" data-min="120">2h</button>
+                <button type="button" class="preset-btn" data-min="240">4h</button>
+                <button type="button" class="preset-btn" data-min="480">8h</button>
+                <button type="button" class="preset-btn" data-min="720">12h</button>
+                <button type="button" class="preset-btn" data-min="1440">24h</button>
+                <button type="button" class="preset-btn" data-min="2428">40h</button>
+            </div>
+            <label for="time-slider" class="slider-label">
                 <span id="time-display">0</span> 分钟内可达
             </label>
-            <input id="time-slider" type="range" min="0" max="1000" step="1" value="0" />
-            <div class="tick-row">
-                <span>0</span>
-                <span>60</span>
-                <span>120</span>
-                <span>240</span>
-                <span>360</span>
-                <span>480</span>
-                <span>600</span>
-                <span>720</span>
-                <span>960</span>
-                <span>1200</span>
-                <span>1440</span>
-                <span>1920</span>
-                <span>2428</span>
-            </div>
+            <div id="time-slider"></div>
         </div>
     </footer>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
     <script src="app.js" defer></script>
 </body>
 </html>
