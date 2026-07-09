@@ -479,6 +479,43 @@ html, body {
 .leaflet-popup-content strong { color: var(--accent); }
 .leaflet-popup-close-button { color: var(--text-dim) !important; }
 
+/* Station hover tooltip — smaller and lighter than the click popup, since
+   it appears just from mouse-over and shouldn't compete with whatever the
+   user is trying to read. Tip arrow uses --panel to match the wrapper. */
+.station-tooltip {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
+}
+.station-tooltip::before {
+    border-top-color: var(--panel) !important;
+}
+.station-tooltip strong { color: var(--accent); }
+
+/* Popups AND the 经停 detail-panel must overlay the legend control.
+   Without this, a click on a station in the top-left of the current view
+   puts the popup tail / detail-panel header UNDER the legend's box.
+   Leaflet's default z-index hierarchy:
+       .leaflet-control       = 1000  (zoom + custom controls incl. our legend)
+       .leaflet-popup-pane    =  700  (markers + popups + tooltips)
+   The detail-panel is a positioned HTML element with z-index 600. Bumping
+   both above 1000 keeps the 经停 info visible no matter where the click
+   lands. Detail-panel is set higher than the popup because if both are
+   open (station click → popup + detail-panel), the panel is the "primary"
+   UI element and should sit on top.
+   Loading bar (#loading-bar z=9999) and topbar/footer (z=500) stay where
+   they were — they don't overlap with the popup area.
+   NOTE: these rules must come AFTER the original `#detail-panel` block
+   (defined earlier in this file) so this z-index wins in the cascade. */
+.leaflet-popup-pane { z-index: 1100; }
+
 /* ── Train detail panel (selected route) ────── */
 #detail-panel {
     position: absolute;
@@ -495,6 +532,11 @@ html, body {
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     transition: transform 0.25s ease, opacity 0.25s ease;
 }
+/* Z-index override — must come AFTER the original `#detail-panel` rule
+   so this wins in the cascade. The .leaflet-popup-pane override sits
+   higher up in the file (near the popup styling). Both place the relevant
+   UI elements above the legend control (z=1000 in .leaflet-top). */
+#detail-panel { z-index: 1200; }
 #detail-panel.hidden {
     transform: translateX(-20px);
     opacity: 0;

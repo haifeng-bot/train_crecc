@@ -264,7 +264,22 @@ function makeStationMarker(s, isReachable) {
         iconAnchor: [5, 5],
     });
     const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isReachable ? 500 : 100 })
-        .bindPopup(stationPopupHtml(s));
+        .bindPopup(stationPopupHtml(s))
+        // Hover-only identifier — show name + city so the user can tell two
+        // nearby stations apart (e.g. 杭州 vs 杭州东) without having to click
+        // first. Sticky mode keeps the tooltip pinned under the cursor, which
+        // matters on a 10×10 px marker — without sticky, the tooltip would
+        // jump to the marker's pixel position as soon as the cursor left the
+        // icon and immediately disappear.
+        .bindTooltip(
+            `<strong>${s.name}</strong>${s.city ? ` · ${s.city}` : ''}`,
+            {
+                direction: 'top',
+                offset: [0, -4],
+                sticky: true,
+                className: 'station-tooltip',
+            }
+        );
     m.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
         focusStation(s);
