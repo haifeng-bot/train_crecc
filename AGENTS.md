@@ -50,6 +50,7 @@ python main.py city 杭州          # 查车次
 # 一次性维护脚本
 python3 scripts/fill_missing_coords.py --apply   # 补 lat/lon 为空的 station
                                                # (dry-run 不加 --apply)
+python3 scripts/fix_truncated_cities.py --apply  # 修 city 表单字/拼音/区/拼错 (4 batches)
 python3 scripts/fix_data_issues.py              # 修 audit 里 P0/P1 数据问题
 
 # 前端本地预览（任何时候）
@@ -191,7 +192,8 @@ layer                    z-index
 
 | 日期 | 改动 | commit |
 |---|---|---|
-| 2026-07-10 | (1) `export_reach_json` 改 skip 策略：路线里任一 stop 缺坐标不再牵连整个 station；(2) 补 40 个缺坐标站（14 sibling + 26 Nominatim city 查询）；(3) 合并拼音 city 名（`nanyang/xuchang/shiyan/郧/石门县`）→ 中文。**结果：reach.json 从 584 站 → 618 站，0 skipped** | (本次) |
+| 2026-07-10 (晚) | **Cities 清理**：`scripts/fix_truncated_cities.py` 修 4 类问题：单字 city 截断 (8 rename/merge + 3 orphan delete)、拼音 city → 中文 (19 rename + 17 merge + 1 chongqingxi 拆分)、区/园区/新区归主 city (3)、拆 `定`→`定西/定南` (1 split)。**结果：589 → 563 cities, 0 单字/拼音, 36 orphan (都是合法 city 名仅无引用)** | (本次) |
+| 2026-07-10 | (1) `export_reach_json` 改 skip 策略：路线里任一 stop 缺坐标不再牵连整个 station；(2) 补 40 个缺坐标站（14 sibling + 26 Nominatim city 查询）；(3) 合并拼音 city 名（`nanyang/xuchang/shiyan/郧/石门县`）→ 中文。**结果：reach.json 从 584 站 → 618 站，0 skipped** | `f25f643` |
 | 2026-07-09 | (1) 站点悬停 tooltip；(2) 经停 popup/面板现在覆盖 legend（之前被遮挡） | `8feab77` |
 | 2026-07-04~08 | preset buttons 折行、piecewise slider、legend 折叠 | `d195cf2` / `282de78` / `c1e599f` |
 | 2026-07-03 | 修了 K4161/K4164 损坏记录；audit 数据问题 | `22d2749` |
