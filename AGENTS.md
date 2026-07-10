@@ -47,6 +47,11 @@ python main.py export-reach       # 出 reach.json 给前端
 python main.py reach 60           # 60 分钟内可达站（CLI 调试）
 python main.py city 杭州          # 查车次
 
+# 一次性维护脚本
+python3 scripts/fill_missing_coords.py --apply   # 补 lat/lon 为空的 station
+                                               # (dry-run 不加 --apply)
+python3 scripts/fix_data_issues.py              # 修 audit 里 P0/P1 数据问题
+
 # 前端本地预览（任何时候）
 cd frontend/ && python3 -m http.server 8000
 # 浏览器开 http://127.0.0.1:8000/
@@ -186,6 +191,7 @@ layer                    z-index
 
 | 日期 | 改动 | commit |
 |---|---|---|
+| 2026-07-10 | (1) `export_reach_json` 改 skip 策略：路线里任一 stop 缺坐标不再牵连整个 station；(2) 补 40 个缺坐标站（14 sibling + 26 Nominatim city 查询）；(3) 合并拼音 city 名（`nanyang/xuchang/shiyan/郧/石门县`）→ 中文。**结果：reach.json 从 584 站 → 618 站，0 skipped** | (本次) |
 | 2026-07-09 | (1) 站点悬停 tooltip；(2) 经停 popup/面板现在覆盖 legend（之前被遮挡） | `8feab77` |
 | 2026-07-04~08 | preset buttons 折行、piecewise slider、legend 折叠 | `d195cf2` / `282de78` / `c1e599f` |
 | 2026-07-03 | 修了 K4161/K4164 损坏记录；audit 数据问题 | `22d2749` |

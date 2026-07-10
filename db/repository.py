@@ -312,6 +312,7 @@ def export_reach_json(
 
         stations_out = []
         skipped_no_route = 0
+        skipped_route_stops_total = 0
         for r in rows:
             stops = query_fastest_route(r["fastest_train_code"],
                                         r["station_id"], conn=conn)
@@ -339,22 +340,30 @@ def export_reach_json(
                 "lon": hub["lon"],
                 "run_min": 0,
             }]
-            ok = True
+            # Build stop list; skip stops that lack coords but DO NOT skip
+            # the whole station. A missing stop in the middle leaves a small
+            # gap in the polyline (Leaflet connects prev→next with a straight
+            # line) but keeps the destination station visible on the map.
+            # This is what unblocks e.g. 怀化南 / 凯里南 / 贵阳北 whose
+            # fastest train (G1767) passes through 南昌南/高安/新化南 —
+            # stations that themselves lack lat/lon.
             for s in stops:
                 srow = conn.execute(
                     "SELECT lat, lon FROM stations WHERE station_name = ?",
                     (s["station_name"],),
                 ).fetchone()
-                if not srow or srow["lat"] is None:
-                    ok = False
-                    break
+                if not srow or srow["lat"] is None or srow["lon"] is None:
+                    skipped_route_stops_total += 1
+                    continue
                 route_stops.append({
                     "name": s["station_name"],
                     "lat": srow["lat"],
                     "lon": srow["lon"],
                     "run_min": s["running_minutes"] - hub_run_min,
                 })
-            if not ok:
+            # Require at least 2 route points (hub + 1 real stop); otherwise
+            # there's nothing meaningful to draw.
+            if len(route_stops) < 2:
                 skipped_no_route += 1
                 continue
 
@@ -389,7 +398,8 @@ def export_reach_json(
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 
         print(f"[export] {len(stations_out)} stations written "
-              f"({skipped_no_route} skipped for missing route/coords) → {output_path}")
+              f"({skipped_no_route} skipped for missing route/coords, "
+              f"{skipped_route_stops_total} route stops skipped) → {output_path}")
 
         return out
     finally:
