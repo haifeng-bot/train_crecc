@@ -146,11 +146,53 @@ function initMap() {
     // Push the attribution to bottom-left so the legend (bottom-right) has room
     map.attributionControl.setPosition('bottomleft');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        subdomains: 'abc',
-        maxZoom: 19,
-    }).addTo(map);
+    // ── Base layer switcher ──
+    // The default OpenStreetMap tiles are blocked / slow inside mainland
+    // China, and even when they load the WGS-84/GCJ-02 mismatch makes
+    // every Chinese station marker drift ~500 m from its road. Switching
+    // to a GCJ-02-native tile source (AMap) and applying the same offset
+    // to the station data keeps the data layer and the basemap in lock-
+    // step. The OSM layer is still kept around as a fallback for users
+    // outside China or anyone debugging the WGS-84 path.
+    const AMapVector = L.tileLayer(
+        'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+        {
+            attribution: '© 高德地图 (AMap)',
+            subdomains: ['1', '2', '3', '4'],
+            maxZoom: 18,
+        }
+    );
+    const AMapSatellite = L.tileLayer(
+        'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+        {
+            attribution: '© 高德卫星 (AMap)',
+            subdomains: ['1', '2', '3', '4'],
+            maxZoom: 18,
+        }
+    );
+    const OSMStandard = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+            attribution: '© OpenStreetMap contributors',
+            subdomains: 'abc',
+            maxZoom: 19,
+        }
+    );
+
+    // Default: AMap vector. It loads reliably inside China, the tiles are
+    // already in GCJ-02 so the offset-compensated station coordinates line
+    // up with the basemap.
+    AMapVector.addTo(map);
+
+    L.control.layers(
+        {
+            '高德地图': AMapVector,
+            '高德卫星': AMapSatellite,
+            'OpenStreetMap': OSMStandard,
+        },
+        {},
+        { position: 'topright', collapsed: true }
+    ).addTo(map);
 
     // Groups (order matters — routes behind markers)
     L.layerGroup().addTo(map);           // placeholder for routes behind
@@ -177,6 +219,15 @@ async function loadData() {
         const resp = await fetch('data/reach.json');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         fullData = await resp.json();
+        // Shift the WGS-84 lat/lon (source of truth, matches crecc.com) to
+        // GCJ-02 so the markers line up with the AMap / Tencent / Google-CN
+        // basemaps. applyTransformStations() is idempotent via the
+        // `__transformed` flag, so reloads are safe.
+        if (window.CoordTransform) {
+            window.CoordTransform.applyTransformStations(fullData);
+        } else {
+            console.warn('CoordTransform not loaded; markers will be ~500m off AMap tiles.');
+        }
         // Update the upper bound based on the data's max_minutes so the
         // slider's range reflects what's actually reachable from the hub.
         const oldMax = maxMinutes;
