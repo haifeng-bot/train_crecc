@@ -1,8 +1,8 @@
-# AGENTS.md — train_crecc 心智模型
+# AGENTS.md - train_crecc 心智模型
 
-> 给我自己（同类的 agent）看的项目说明。README 给 GitHub 访客看命令清单，AGENTS.md 给我的是**进入项目能立刻开始干活**的心智模型：架构、状态机、踩过的坑、工作约定。
+> 给我自己(同类的 agent)看的项目说明。README 给 GitHub 访客看命令清单,AGENTS.md 给我的是**进入项目能立刻开始干活**的心智模型:架构、状态机、踩过的坑、工作约定。
 >
-> 任何**功能逻辑变更**都要同步更新本文件（约定见 §7）。
+> 任何**功能逻辑变更**都要同步更新本文件(约定见 §7)。
 
 ---
 
@@ -10,9 +10,9 @@
 
 抓 crecc.com 芜湖站列车数据 → SQLite → 导出 `reach.json` → 前端 Leaflet 地图可视化「从芜湖出发 N 分钟内能到哪些站」。
 
-- 数据源：芜湖站页面 + 761 个车次详情页
-- 用户视角：自己住在芜湖，要直观看"40 小时通达圈"
-- 部署：前端是 Cloudflare Pages 上的纯静态站（无后端）
+- 数据源:芜湖站页面 + 761 个车次详情页
+- 用户视角:自己住在芜湖,要直观看"40 小时通达圈"
+- 部署:前端是 Cloudflare Pages 上的纯静态站(无后端)
 
 ---
 
@@ -31,20 +31,20 @@ crecc.com / 芜湖站页面 + 761 个详情页
    浏览器
 ```
 
-3 层互相**独立**：scraper 慢、更改少；DB 中间层稳定；**前端是改动最频繁的部分**——下面多着墨。
+3 层互相**独立**:scraper 慢、更改少;DB 中间层稳定;**前端是改动最频繁的部分**--下面多着墨。
 
 ---
 
-## 3. 关键命令（最常敲的几个）
+## 3. 关键命令(最常敲的几个)
 
 ```bash
 cd train_crecc/
 
 # 数据
-python main.py fetch              # 全量抓（页面未变则跳过）
+python main.py fetch              # 全量抓(页面未变则跳过)
 python main.py status             # DB 状态 + last_fetch_at
 python main.py export-reach       # 出 reach.json 给前端
-python main.py reach 60           # 60 分钟内可达站（CLI 调试）
+python main.py reach 60           # 60 分钟内可达站(CLI 调试)
 python main.py city 杭州          # 查车次
 
 # 一次性维护脚本
@@ -53,7 +53,7 @@ python3 scripts/fill_missing_coords.py --apply   # 补 lat/lon 为空的 station
 python3 scripts/fix_truncated_cities.py --apply  # 修 city 表单字/拼音/区/拼错 (4 batches)
 python3 scripts/fix_data_issues.py              # 修 audit 里 P0/P1 数据问题
 
-# 前端本地预览（任何时候）
+# 前端本地预览(任何时候)
 cd frontend/ && python3 -m http.server 8000
 # 浏览器开 http://127.0.0.1:8000/
 
@@ -61,7 +61,7 @@ cd frontend/ && python3 -m http.server 8000
 scripts/cron_fetch.sh
 ```
 
-极别忘了 `data_errors_audit.md`——之前排查数据问题时写的笔记，下次撞类似问题先读它。
+极别忘了 `data_errors_audit.md`--之前排查数据问题时写的笔记,下次撞类似问题先读它。
 
 ---
 
@@ -69,11 +69,11 @@ scripts/cron_fetch.sh
 
 > **这是改动最频繁的部分**。我大部分工作在这里。
 
-文件三件套都在 `frontend/`：
-- `index.html` — 顶层 DOM（topbar / map / sidebar / detail-panel / legend / controls / loading-bar）
-- `app.js` — 状态机 + Leaflet 渲染 + slider 联动
-- `style.css` — 设计 token (`:root`) + 各组件样式 + **z-index 分层**
-- `data/reach.json` — 前端的全部数据；fetch 写到此处后被静态托管
+文件三件套都在 `frontend/`:
+- `index.html` - 顶层 DOM(topbar / map / sidebar / detail-panel / legend / controls / loading-bar)
+- `app.js` - 状态机 + Leaflet 渲染 + slider 联动
+- `style.css` - 设计 token (`:root`) + 各组件样式 + **z-index 分层**
+- `data/reach.json` - 前端的全部数据;fetch 写到此处后被静态托管
 
 ### 状态机
 
@@ -81,10 +81,10 @@ scripts/cron_fetch.sh
 init
   │  loadData() 取 reach.json
   ▼
-slider=0          ← 全部站点 dimmed，无路线，仅有 hub 脉动点
-  │  用户拖滑块（debounce 1s）
+slider=0          ← 全部站点 dimmed,无路线,仅有 hub 脉动点
+  │  用户拖滑块(debounce 1s)
   ▼
-slider>0          ← 站点染色（按最快车次类型色），polylines 铺出，sidebar 列站点
+slider>0          ← 站点染色(按最快车次类型色),polylines 铺出,sidebar 列站点
   │  hover station / polyline
   ▼
 hover             ← .station-tooltip 浮出站名 / polyline tooltip 显示时间+车次
@@ -95,7 +95,7 @@ selected          ← station: flyTo + openPopup(small) + showDetailPanel(big)
                    其他站点/路线 dim
   │  ESC / close / 空白点击
   ▼
-deselected        ← 回到上一状态，restore 默认颜色与 opacity
+deselected        ← 回到上一状态,restore 默认颜色与 opacity
 ```
 
 ### `reach.json` 关键字段契约
@@ -103,8 +103,8 @@ deselected        ← 回到上一状态，restore 默认颜色与 opacity
 ```ts
 {
   hub: { name, lat, lon }                      // 必填
-  max_minutes: number                          // 上限，决定 slider 范围
-  last_updated: "2026-06-26 02:04:49"          // 可选，进 #data-subtitle
+  max_minutes: number                          // 上限,决定 slider 范围
+  last_updated: "2026-06-26 02:04:49"          // 可选,进 #data-subtitle
   stations: [
     {
       id: 12,                                  // 内部稳定 id
@@ -113,93 +113,95 @@ deselected        ← 回到上一状态，restore 默认颜色与 opacity
       min_minutes: 11,                         // 从芜湖最快的车程
       fastest_train_code: "G302",
       train_count: 5,                          // 经过 N 趟
-      route: [ { name, lat, lon, run_min } ]   // 最快车次的完整经停，route[0] = 芜湖
+      route: [ { name, lat, lon, run_min } ]   // 最快车次的完整经停,route[0] = 芜湖
     }
   ]
 }
 ```
 
-⚠️ `route[0]` 永远是 芜湖（API 约定）。前端 polyline 渲染时会把它在屏幕空间外向推 `HUB_PX_OFFSET=2` 像素，避免被 hub marker 吃掉线头——见 `offsetFirstStopFromHub()` + `recomputeRouteOffsets(zoomend)`。
+⚠️ `route[0]` 永远是 芜湖(API 约定)。前端 polyline 渲染时会把它在屏幕空间外向推 `HUB_PX_OFFSET=2` 像素,避免被 hub marker 吃掉线头--见 `offsetFirstStopFromHub()` + `recomputeRouteOffsets(zoomend)`。
 
-### z-index 分层（设计决策，必须记住）
+### z-index 分层(设计决策,必须记住)
 
 ```
 layer                    z-index
 ───────────────────────────────
-#loading-bar             9999   ← 全局最顶（加载提示）
-#detail-panel            1200   ← 经停详情面板（左上，可遮挡 legend）
+#loading-bar             9999   ← 全局最顶(加载提示)
+#detail-panel            1200   ← 经停详情面板(左上,可遮挡 legend)
 .leaflet-popup-pane      1100   ← station popup / polyline popup
 .leaflet-top             1000   ← 默认的 zoom 控件 + 我们的 legend
-                            │     （任何想压在 legend 之下的元素必须 ≥ 1100）
+                            │     (任何想压在 legend 之下的元素必须 ≥ 1100)
 .leaflet-bottom           1000   ← attribution
-#sidebar                  600   ← 右侧面板，与 legend 不冲突
+#sidebar                  600   ← 右侧面板,与 legend 不冲突
 #topbar / #controls       500   ← 页头/页脚
 ```
 
-**改 z-index 的硬规则**：在 `style.css` 末尾写 override，不要写在原 `#xxx` 选择器块**前面**——cascade 顺序会让你的新值被原值覆盖（这是我 2026-07-09 踩过的坑，看 §8 那条 commit）。
+**改 z-index 的硬规则**:在 `style.css` 末尾写 override,不要写在原 `#xxx` 选择器块**前面**--cascade 顺序会让你的新值被原值覆盖(这是我 2026-07-09 踩过的坑,看 §8 那条 commit)。
 
-**改任何 z-index 前先 grep**：`grep -n "z-index" frontend/style.css`，统一规划分层再下笔。
+**改任何 z-index 前先 grep**:`grep -n "z-index" frontend/style.css`,统一规划分层再下笔。
 
 ### 关键 Leaflet API 习惯
 
-- 所有 station marker 用 `L.divIcon({ html: '<div class="station-marker">…' })` 而不是 `L.Icon`，方便 CSS 完全控制外观
-- polyline 三件套（shadow / visible / hit）—— hit 是不可见但可点击的胖线，专门接 `bindTooltip` 和 `click`
-- polyline 的颜色由最快车次的车次号首字母决定（G/D/C/Z/T/K），见 `trainTypeColor()`
+- 所有 station marker 用 `L.divIcon({ html: '<div class="station-marker">...' })` 而不是 `L.Icon`,方便 CSS 完全控制外观
+- polyline 三件套(shadow / visible / hit)-- hit 是不可见但可点击的胖线,专门接 `bindTooltip` 和 `click`
+- polyline 的颜色由最快车次的车次号首字母决定(G/D/C/Z/T/K),见 `trainTypeColor()`
 - fit-bounds 用 `L.latLngBounds(hub + reachable stations)` + 5% 屏幕 padding
 
 ---
 
 ## 5. 核心: Python 抓取 pipeline
 
-- **入口**：`main.py` 8 个 subcommand，最常用 `fetch` / `status` / `reach` / `city` / `export-reach`
-- **节流**：`INTER_REQUEST_SLEEP=1.5s` / `INTER_BATCH_SLEEP=5s/50 趟`，对 crecc 礼貌
-- **skip-if-unchanged**：通过页面顶部"更新时间"字符串对比 `meta.last_updated`——变了才真抓
-- **覆盖策略**：每次 fetch 是 `DELETE + INSERT` 的全量覆盖，不留历史快照
-- **v_station_reach 视图**：所有前端可见的可达性数据走这个 view，对源站数据里 ~2% 的 `running_minutes` 非单调问题做了保护
+- **入口**:`main.py` 8 个 subcommand,最常用 `fetch` / `status` / `reach` / `city` / `export-reach`
+- **节流**:`INTER_REQUEST_SLEEP=1.5s` / `INTER_BATCH_SLEEP=5s/50 趟`,对 crecc 礼貌
+- **skip-if-unchanged**:通过页面顶部"更新时间"字符串对比 `meta.last_updated`--变了才真抓
+- **覆盖策略**:每次 fetch 是 `DELETE + INSERT` 的全量覆盖,不留历史快照
+- **v_station_reach 视图**:所有前端可见的可达性数据走这个 view,对源站数据里 ~2% 的 `running_minutes` 非单调问题做了保护
 
 ### 抓相关的边界
 
 - 大约 737 车次 → 761 个详情页 → 1 万+ stops
-- 单次 fetch 完整流程大约 15-20 分钟（节流导致）
-- 如果改 scraper，**先看 `scrapers/wuhu_page.py` 和 `train_detail.py` 的解析函数**——crecc 站点的 HTML 结构是隐式契约
+- 单次 fetch 完整流程大约 15-20 分钟(节流导致)
+- 如果改 scraper,**先看 `scrapers/wuhu_page.py` 和 `train_detail.py` 的解析函数**--crecc 站点的 HTML 结构是隐式契约
+- **每行 stops 表的"车次"列必须等于页面车次**(row-level guard,见 §8 的 2026-08-11 条目 + `_parse_stop_table`)。这是 crecc.com 把多趟车的 stops 拼到同一详情页时的最后一道防线
 
 ---
 
-## 6. 数据模型（速记）
+## 6. 数据模型(速记)
 
-5 表 + 1 视图（schema.sql 全文）：
+5 表 + 1 视图(schema.sql 全文):
 
-- `cities` / `stations` — 主数据，跨抓取保留
-- `meta` — 单行 sentinel，存 `last_updated` 等
-- `trains` / `stops` — 每次抓取全量覆盖
-- `v_station_reach` — view，给前端供"每个站到芜湖的最短时间 + 最快车次"——前端 reach.json 实际上就是这个 view 的 export
-
----
-
-## 7. 工作约定（2026-07-09 海峰明示）
-
-1. **细微改动不自己测、不截图**：直接改 + commit + push。**除非用户明确要求**做端到端测试。
-2. **功能逻辑变更必须更新本文件**对应章节（架构、状态机、数据契约等）。改完顺手做。
-3. **改 CSS / z-index 必须先 grep**：见 §4 末尾硬规则。
-4. **改前端前先看 schema**：reach.json 字段是契约，改 app.js 之前先确认 reach.json 长这样。
-5. **任何 commit 前检查 `.gitignore`**：`data/raw/`、`*.db`、`*.bak`、`*.png`（截图）—— 一律不能入仓。
-6. **commit 风格**：`feat/fix/refactor/docs(<scope>): 中文主题`。commit 完**立刻 push**（MEMORY.md 里的"推送铁律"——所有改动都是 agent 自己做的，不需要 watcher）。
-7. **没有任何自动化测试**——`tests/` 不存在。如果哪天需要，写在 `tests/` 下，用 Playwright + pytest，跟 reach.json 的 schema 一起作为快速回归。
+- `cities` / `stations` - 主数据,跨抓取保留
+- `meta` - 单行 sentinel,存 `last_updated` 等
+- `trains` / `stops` - 每次抓取全量覆盖
+- `v_station_reach` - view,给前端供"每个站到芜湖的最短时间 + 最快车次"--前端 reach.json 实际上就是这个 view 的 export
 
 ---
 
-## 8. 变更日志（重要改动留痕）
+## 7. 工作约定(2026-07-09 海峰明示)
+
+1. **细微改动不自己测、不截图**:直接改 + commit + push。**除非用户明确要求**做端到端测试。
+2. **功能逻辑变更必须更新本文件**对应章节(架构、状态机、数据契约等)。改完顺手做。
+3. **改 CSS / z-index 必须先 grep**:见 §4 末尾硬规则。
+4. **改前端前先看 schema**:reach.json 字段是契约,改 app.js 之前先确认 reach.json 长这样。
+5. **任何 commit 前检查 `.gitignore`**:`data/raw/`、`*.db`、`*.bak`、`*.png`(截图)-- 一律不能入仓。
+6. **commit 风格**:`feat/fix/refactor/docs(<scope>): 中文主题`。commit 完**立刻 push**(MEMORY.md 里的"推送铁律"--所有改动都是 agent 自己做的,不需要 watcher)。
+7. **没有任何自动化测试**--`tests/` 不存在。如果哪天需要,写在 `tests/` 下,用 Playwright + pytest,跟 reach.json 的 schema 一起作为快速回归。
+
+---
+
+## 8. 变更日志(重要改动留痕)
 
 | 日期 | 改动 | commit |
 |---|---|---|
-| 2026-07-10 (晚) | **Cities 清理**：`scripts/fix_truncated_cities.py` 修 4 类问题：单字 city 截断 (8 rename/merge + 3 orphan delete)、拼音 city → 中文 (19 rename + 17 merge + 1 chongqingxi 拆分)、区/园区/新区归主 city (3)、拆 `定`→`定西/定南` (1 split)。**结果：589 → 563 cities, 0 单字/拼音, 36 orphan (都是合法 city 名仅无引用)** | (本次) |
-| 2026-07-10 | (1) `export_reach_json` 改 skip 策略：路线里任一 stop 缺坐标不再牵连整个 station；(2) 补 40 个缺坐标站（14 sibling + 26 Nominatim city 查询）；(3) 合并拼音 city 名（`nanyang/xuchang/shiyan/郧/石门县`）→ 中文。**结果：reach.json 从 584 站 → 618 站，0 skipped** | `f25f643` |
-| 2026-07-09 | (1) 站点悬停 tooltip；(2) 经停 popup/面板现在覆盖 legend（之前被遮挡） | `8feab77` |
+| 2026-08-11 | **G4359/G4362/G4363 row-mixing bug 修复**:(1) `scrapers/train_detail.py` 加 row-level 车次校验--读 `cells[2]`(车次列),与页面车次不一致则 skip + log;(2) `scripts/cleanup_g4359_corruption.py` 一次性 DELETE 这三趟车的 3+36 行(trains+stops);(3) 重新 export-reach.json(607 → 608 stations)。**根因**:`crecc.com/huoche/g4359.html` 的 stops 表里混杂了 G4362 / G4359 / G4363 三趟车的 stop,scraper 漏读 cells[2] 把全部 12 行当成 G4359。**教训**:crecc 详情页是隐式契约,必须校验每行的实际车次。**预防**:见 §10 数据质量守门人。 | (本次) |
+| 2026-07-10 (晚) | **Cities 清理**:`scripts/fix_truncated_cities.py` 修 4 类问题:单字 city 截断 (8 rename/merge + 3 orphan delete)、拼音 city → 中文 (19 rename + 17 merge + 1 chongqingxi 拆分)、区/园区/新区归主 city (3)、拆 `定`→`定西/定南` (1 split)。**结果:589 → 563 cities, 0 单字/拼音, 36 orphan (都是合法 city 名仅无引用)** | (本次) |
+| 2026-07-10 | (1) `export_reach_json` 改 skip 策略:路线里任一 stop 缺坐标不再牵连整个 station;(2) 补 40 个缺坐标站(14 sibling + 26 Nominatim city 查询);(3) 合并拼音 city 名(`nanyang/xuchang/shiyan/郧/石门县`)→ 中文。**结果:reach.json 从 584 站 → 618 站,0 skipped** | `f25f643` |
+| 2026-07-09 | (1) 站点悬停 tooltip;(2) 经停 popup/面板现在覆盖 legend(之前被遮挡) | `8feab77` |
 | 2026-07-04~08 | preset buttons 折行、piecewise slider、legend 折叠 | `d195cf2` / `282de78` / `c1e599f` |
-| 2026-07-03 | 修了 K4161/K4164 损坏记录；audit 数据问题 | `22d2749` |
+| 2026-07-03 | 修了 K4161/K4164 损坏记录;audit 数据问题 | `22d2749` |
 | 2026-07 之前 | 全量抓管道 + Cloudflare Pages 部署 | (历史 commits) |
 
-**新改动加在最上面一行的上面**——保持时序最优先、最新在前。
+**新改动加在最上面一行的上面**--保持时序最优先、最新在前。
 
 ---
 
@@ -209,3 +211,62 @@ layer                    z-index
 - ✅ 改 z-index **先 grep**所有 z-index，再写 override
 - ⚠️ z-index override **永远写在被 override 的选择器之后**，否则被 cascade 吃掉（详细见 `style.css` 末尾注释）
 - ⚠️ 不要在 workspace 顶层建 `.git`——workspace 是容器，每个子项目是独立 git
+
+---
+
+## 10. 数据质量守门人（防 G4359 类 bug 复发）
+
+> 2026-08-11 G4359/G4362/G4363 row-mixing 事件之后的预防体系。
+> 原则：**在数据进入 DB 之前就拦下来，比事后清理便宜 100 倍**。
+
+### 三道防线（按"早 → 晚"顺序）
+
+**第一道：scraper 解析时校验**（已实现，见 `train_detail.py`）
+
+- `_parse_stop_table()` 的 row-level guard：读每行的 cells[2]（车次），与页面车次不一致就 skip + log
+- 失败模式：如果某页面 stops 全部是异车次行，scraper 返回 `stops=[]`，main.py 写一条 stop_count=0 的 stub train——**安全失败**，不会污染数据
+
+**第二道：fetch 后立即审计**（**待实现**，cron_fetch.sh 调用）
+
+- `scripts/audit_post_fetch.py`：fetch 完成后立刻跑，检查本次新增的 trains/stops：
+  - **重复 stop 序列**：如果两趟车有 ≥3 个相同 station_id+arrive_time 的 stops，几乎肯定是 row-mixing
+  - **stops 地理跳跃**：相邻 stop 的 haversine 距离 > 800km 视为可疑（芜湖↔都匀东这种跨省的是信号）
+  - **G 跨段车次**：连续 stops 的 running_minutes 跳跃 > 240min（4h），可能是 day 错乱或 stop 错位
+  - 任意一项触发 → 写 `state/post_fetch_audit.json` + 告警，不阻塞 fetch（人工 review）
+
+**第三道：reach.json 视图层守门**（已实现）
+
+- `v_station_reach` view 已经过滤 running_minutes 非单调的 stops（详见 schema.sql）
+- 前端 reach.json 因此不会显示时间乱序的路线——但 detail panel 还能看到 trains 表里的脏数据
+
+### cron_fetch.sh 应该加的第二道防线（**待海峰批准**）
+
+在当前 cron 流程里插入 audit 步骤：
+
+```bash
+python main.py fetch                # 现状
+python scripts/audit_post_fetch.py # 新增：跑完立即审计
+# 如发现新错误 → 发 Telegram 消息给海峰（复用 wanzhi_guide cron 的 announce 通道）
+python main.py export-reach        # 现状
+git add + commit + push             # 现状
+```
+
+### 检测策略总结
+
+| 错误类型 | 检测位置 | 工具 |
+|---|---|---|
+| crecc 页面混入异车次（2026-08-11 案例） | scraper | `_parse_stop_table` cells[2] 校验（已） |
+| 同一站时间倒退（day 错乱） | scraper + view | day 字段解析 + view guard（部分） |
+| stops 地理大跳跃（city 推错） | post-fetch audit | haversine 检查（待） |
+| 重复 stops 序列（row-mixing 残留） | post-fetch audit | 两车 stops diff（待） |
+| stop_duration 跨日 ~1440min | scraper | day 计算（部分，2026-07-03 audit 标 P0 但还没修） |
+| city/station typo / 单字 / 拼音 | post-fetch audit | city 表清洗脚本（已，scripts/fix_truncated_cities.py） |
+
+### 跑 audit 的两个时机
+
+1. **每次 cron fetch 后**：上面 §第二道 描述
+2. **手动 ad-hoc**：`python scripts/audit_post_fetch.py --since 7d`，对比本周 vs 上周的差异
+
+### 历史教训集成
+
+- `data_errors_audit.md`（2026-07-03 那次审计）是当时未修完的问题清单——本次 G4359 bug 就是当时漏掉的"行级车次校验"那一项。**每次 audit 都应该和它对照，看新增的 bug 是不是以前的已知类别没覆盖**。

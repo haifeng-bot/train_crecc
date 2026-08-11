@@ -35,9 +35,22 @@ def _parse_stop_table(table: Any,
     """
     Parse the stop-sequence table.
     Always 7 columns: 站次 | 车站 | 车次 | 到达时间 | 发车时间 | 运行时间 | 停留时间.
+
+    Row-level train-code guard (added 2026-08-11, see AGENTS.md §8):
+        crecc.com sometimes mixes stops of multiple train numbers into one
+        detail page (e.g. /huoche/g4359.html had rows for G4362 / G4359 /
+        G4363). The "车次" column on each row tells us which train that row
+        actually belongs to. If it doesn't match the page's train_code, we
+        skip that row — we'd rather underreport than ingest a wrong route.
+        Pages that lose all their rows (every row is mismatched) end up
+        with stops=[] and main.py cmd_fetch writes a stub train row with
+        stop_count=0, which is the safe failure mode.
     """
     stops = []
     rows = table.find_all("tr")
+    skipped_mismatch = 0
+
+    page_code_upper = train_code.upper()
 
     for row in rows:
         cells = row.find_all(["td", "th"])
@@ -58,6 +71,21 @@ def _parse_stop_table(table: Any,
         else:
             station_name = cells[1].get_text(strip=True)
             station_url = ""
+
+        # ── Row-level train-code guard ────────────────────────────────
+        # Column 2 = "车次" (train code for this specific stop row).
+        # The cell may contain an <a> link to /huoche/<code>.html OR plain
+        # text. We strip whitespace/case and compare to the page's code.
+        row_code = ""
+        if len(cells) > 2:
+            raw = cells[2].get_text(strip=True)
+            # Normalize: "G 4362", "g4362\n", " G4362 " → "G4362"
+            row_code = "".join(raw.split()).upper()
+        if row_code and row_code != page_code_upper:
+            print(f"  [parse] {train_code} row {seq} ({station_name}): "
+                  f"row sub-code={row_code!r} ≠ page={train_code!r} → skip")
+            skipped_mismatch += 1
+            continue
 
         # Column offsets: always col 3=到达, col 4=发车, col 5=运行, col 6=停留
         arrive_raw = cells[3].get_text(strip=True) if len(cells) > 3 else ""
@@ -81,6 +109,10 @@ def _parse_stop_table(table: Any,
             "stop_duration": _parse_duration(stop_str),
             "running_minutes": _parse_duration(duration_str),
         })
+
+    if skipped_mismatch:
+        print(f"  [parse] {train_code}: filtered {skipped_mismatch} row(s) "
+              f"with mismatched train code (page-level source bug)")
 
     return stops
 
