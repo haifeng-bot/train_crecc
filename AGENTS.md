@@ -226,30 +226,45 @@ layer                    z-index
 - `_parse_stop_table()` 的 row-level guard：读每行的 cells[2]（车次），与页面车次不一致就 skip + log
 - 失败模式：如果某页面 stops 全部是异车次行，scraper 返回 `stops=[]`，main.py 写一条 stop_count=0 的 stub train——**安全失败**，不会污染数据
 
-**第二道：fetch 后立即审计**（**待实现**，cron_fetch.sh 调用）
+**第二道：fetch 后立即审计**（**已实现 2026-08-11**）
 
-- `scripts/audit_post_fetch.py`：fetch 完成后立刻跑，检查本次新增的 trains/stops：
-  - **重复 stop 序列**：如果两趟车有 ≥3 个相同 station_id+arrive_time 的 stops，几乎肯定是 row-mixing
-  - **stops 地理跳跃**：相邻 stop 的 haversine 距离 > 800km 视为可疑（芜湖↔都匀东这种跨省的是信号）
-  - **G 跨段车次**：连续 stops 的 running_minutes 跳跃 > 240min（4h），可能是 day 错乱或 stop 错位
-  - 任意一项触发 → 写 `state/post_fetch_audit.json` + 告警，不阻塞 fetch（人工 review）
+- `scripts/audit_post_fetch.py`：fetch 完成后立刻跑，5 项检查（详见脚本 docstring）：
+  - **duplicate_stops_across_trains**（≥5 个共享 stops + overlap ≥ 80% → row-mixing 信号）
+  - **geographic_jumps**（haversine > 800km 的相邻 stop）
+  - **time_delta_anomalies**（连续 running_minutes |Δt| > 240min）
+  - **non_monotonic_running_minutes**（递减时间乱序）
+  - **duplicate_stops_within_train**（同站出现 ≥2 次）
+- 输出 `state/post_fetch_audit.json`（gitignored）+ stdout 摘要 + 写回归 diff（new / persistent / resolved）
+- **exit code**：0 干净或仅 persistent，1 仅 NEW 回归，2 脚本崩溃
+- **cron 集成**（`scripts/cron_fetch.sh` step 1.5）：audit 永远不阻塞 cron——非零退出仅 log WARN
+
+### 现状（2026-08-11 首次跑后）
+
+`state/post_fetch_audit.json` 有 **452 个 persistent findings**。这些是历史准有问题——以前存在 DB 里未被清理：
+- K551/K554、K345/K348 等双向配对车次 98% 时间重叠（项 1 信号，但实际是 row-mixing）
+- T151/T154 sequence=13：源潭→广州白云 950km（可能是错填坐标；项 2）
+- C3042/C3043 等 33 个 non-monotonic（2026-07-03 已知未修，项 4）
+- D4836/D4837 汉口、D5487/D5490 南京南 重复 stop（2026-07-03 已知，项 5）
+
+这些都是 baseline，不是 G4359 类新 bug。新 fetch 只会在**源站引入**新的 row-mixing 时才报新 finding。
 
 **第三道：reach.json 视图层守门**（已实现）
 
 - `v_station_reach` view 已经过滤 running_minutes 非单调的 stops（详见 schema.sql）
 - 前端 reach.json 因此不会显示时间乱序的路线——但 detail panel 还能看到 trains 表里的脏数据
 
-### cron_fetch.sh 应该加的第二道防线（**待海峰批准**）
+### cron_fetch.sh 应该加的第二道防线（**已集成 2026-08-11**）
 
-在当前 cron 流程里插入 audit 步骤：
+`scripts/cron_fetch.sh` 现在的完整流程：
 
 ```bash
-python main.py fetch                # 现状
-python scripts/audit_post_fetch.py # 新增：跑完立即审计
-# 如发现新错误 → 发 Telegram 消息给海峰（复用 wanzhi_guide cron 的 announce 通道）
-python main.py export-reach        # 现状
-git add + commit + push             # 现状
+python3 main.py fetch                # 1. 抓上游
+python3 scripts/audit_post_fetch.py # 1.5. 审计（不阻塞 cron）
+python3 main.py export-reach        # 2. 重新导出 reach.json
+git add + commit + push             # 3. 推送（若 last_updated 变了）
 ```
+
+Future：audit 出现 NEW finding 时可以接 Telegram alert（复用 wanzhi_guide cron 的 announce 通道）。当前仅 log WARN + 写 JSON 供后续 review。
 
 ### 检测策略总结
 

@@ -26,6 +26,9 @@ data/*.bak.*
 .cache/
 .DS_Store
 
+# Runtime state (audit reports, cron markers, etc.) — not source
+state/
+
 # OS / Editor
 .vscode/
 .idea/

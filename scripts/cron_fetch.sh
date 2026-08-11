@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 #
 # Cron-driven pipeline:
-#   1. fetch  — pulls wuhu page; skip-if-unchanged handled inside
-#   2. export-reach — regenerate frontend/data/reach.json
-#   3. commit + push reach.json if it changed (push iron-rule from MEMORY)
+#   1. fetch              — pulls wuhu page; skip-if-unchanged handled inside
+#   2. audit_post_fetch   — detect data-quality regressions vs previous run
+#                            (writes state/post_fetch_audit.json; logs findings)
+#                            Exit 1 if NEW findings (regression), 0 otherwise.
+#                            Cron does NOT abort on audit exit code — findings
+#                            are informational. See AGENTS.md §10.
+#   3. export-reach       — regenerate frontend/data/reach.json
+#   4. commit + push reach.json if it changed (push iron-rule from MEMORY)
 #
 # Exit non-zero on any failure; cron will email / surface the log.
 #
@@ -35,6 +40,15 @@ last_updated_before=$(python3 -c "import sqlite3; c=sqlite3.connect('data/train.
 if ! python3 main.py fetch >> "$LOG" 2>&1; then
     log "ERROR: main.py fetch failed"
     exit 1
+fi
+
+# 1.5. Audit for data-quality regressions (informational — never aborts).
+#   Exit 1 = new findings vs previous run; 0 = clean or only persistent.
+#   Cron logs the WARN but continues to export-reach + commit (reach.json
+#   contains only view-filtered data; bad rows in DB don't reach frontend).
+if ! python3 scripts/audit_post_fetch.py >> "$LOG" 2>&1; then
+    AUDIT_EXIT=$?
+    log "WARN: audit_post_fetch exit=$AUDIT_EXIT (review $LOG + state/post_fetch_audit.json)"
 fi
 
 # 2. Regenerate reach.json (idempotent)
