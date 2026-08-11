@@ -270,3 +270,53 @@ git add + commit + push             # 现状
 ### 历史教训集成
 
 - `data_errors_audit.md`（2026-07-03 那次审计）是当时未修完的问题清单——本次 G4359 bug 就是当时漏掉的"行级车次校验"那一项。**每次 audit 都应该和它对照，看新增的 bug 是不是以前的已知类别没覆盖**。
+
+---
+
+## 11. Quarantine 名单（上游源页已知坏的 train）
+
+> 2026-08-11 增设。应对 crecc.com 详情页本身是坏的（不是 scraper 解析错）
+> 的情况。与 §10 的自动 audit 不同，这个名单是**主动跳过**——不联网
+> 不入库不污染。
+
+### 名单当前成员
+
+- `G4359` — crecc.com/huoche/g4359.html stops 表混入 G4362/G4359/G4363 三趟车的行（详见 §8）
+
+### 机制
+
+- `config.QUARANTINED_TRAINS` 是一个 `frozenset`（不可变，防误改）
+- `main.py cmd_fetch` 在每趟车的 detail fetch **之前** 检查 `code in `QUARANTINED_TRAINS``，命中则：
+  - 不发网络请求（不下单定 crecc 的一个请求）
+  - 不写 `trains` / `stops` 行
+  - 计数 + log `[quarantine] skip G4359 (in QUARANTINED_TRAINS, upstream page is broken)`
+  - 最终 cron log 里以 `Quarantined: N` 报告
+
+### 增删名单流程
+
+**添加（新发现某趟车的源页是坏的）：**
+1. 离线验证：`python3 -c "from scrapers.train_detail import _parse_stop_table; from bs4 import BeautifulSoup; from pathlib import Path; html = Path('data/raw/<code>_snapshot.html').read_text(); soup = BeautifulSoup(html, 'lxml'); tables = soup.find_all('table'); stop_table = [t for t in tables if '站次' in t.get_text(' ', strip=True)[:20]][0]; print(_parse_stop_table(stop_table, '<code>'))"`
+2. 若输出含 `[parse] <code> row N (站名): row sub-code='XXX' ≠ page='<code>' → skip` 行，说明确是异车次混入
+3. `curl https://www.crecc.com/huoche/<code>.html | grep -oE 'huoche/[a-z]?[0-9]+' | sort -u` 确认页面主推其他车次
+4. `config.QUARANTINED_TRAINS` 加入 `<code>`，commit & push
+5. **不需要跑 cleanup**——既然没被采集进 DB，就没有脏数据要清
+
+**移除（源站修好了）：**
+1. `curl https://www.crecc.com/huoche/<code>.html -o /tmp/check.html`
+2. 重复 §添加 步骤 1 的脚本，确认所有 `sub-code == page`
+3. `config.QUARANTINED_TRAINS` 删除该 code，commit & push
+4. **下次 cron fetch 会自动拉**这趟车的数据（无需手动 fetch）
+
+### 为什么不用 config.QUARANTINED_TRAINS 自动检测
+
+理论上可以让 scraper 检测"页面内 100% 行被剔除"时自动加进 quarantine。
+**没采用的原因**：
+- 名单该是人手动控，反应“人知道 crecc 修好了”的事实，不是 scraper 检测的信号
+- 自动加入可能误伤——例：未来 crecc 引入"同站多个车次”的合法表格
+- 手动列表是 audit trail，agent 可以随时在 MEMORY.md 里 review
+
+### 相关 issue 追踪
+
+| 代码 | 入名单日期 | 预计 release 条件 | 实际 release 日期 |
+|---|---|---|---|
+| G4359 | 2026-08-11 | crecc.com/huoche/g4359.html 修复 stops 表混车 | TBD |

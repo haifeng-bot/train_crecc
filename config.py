@@ -47,3 +47,22 @@ EXTERNAL_GEO_DEFAULT = DATA_DIR / "external" / "osm_stations_2021.json"
 
 # --- Hub (the visual + query anchor) ---
 HUB_STATION_NAME = "芜湖"   # the central station all directions are computed from
+
+# --- Quarantine list ---
+# Trains whose crecc.com detail page is currently broken upstream (e.g. mixing
+# stops from multiple train numbers into one page). We skip them entirely in
+# cmd_fetch rather than risk ingesting wrong stops. See AGENTS.md §11.
+#
+# How to add:
+#   - Train shows up in raw snapshots with row-level train-code mismatches
+#     (the row's "车次" cell doesn't match the page's title). Run
+#     `python scripts/check_quarantine.py <code>` to confirm before adding.
+#   - Add the code here. The next cron_fetch will skip it.
+# How to remove:
+#   - Confirm crecc.com fixed the page: `curl -sL https://www.crecc.com/huoche/<code>.html`
+#     and grep for the page's own code in every row's "车次" cell.
+#   - If all rows now match, remove from this set. The next cron_fetch will
+#     fetch it normally.
+QUARANTINED_TRAINS = frozenset({
+    "G4359",   # 2026-08-11: crecc.com /huoche/g4359.html mixes G4362/G4359/G4363 rows
+})

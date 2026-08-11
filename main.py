@@ -30,7 +30,7 @@ from scrapers.wuhu_page import parse_wuhu_page
 from scrapers.train_detail import fetch_train_detail
 from scrapers.geocoder import geocode_ungencoded_stations
 from analysis.directions import compute_all_directions
-from config import INTER_REQUEST_SLEEP, INTER_BATCH_SLEEP
+from config import INTER_REQUEST_SLEEP, INTER_BATCH_SLEEP, QUARANTINED_TRAINS
 
 
 def cmd_fetch():
@@ -69,6 +69,7 @@ def cmd_fetch():
     stop_rows = []
     station_id_cache = {}
     failed = 0
+    quarantine_skipped = 0
 
     def _get_station_id(name):
         if name not in station_id_cache:
@@ -78,6 +79,15 @@ def cmd_fetch():
 
     for idx, tm in enumerate(trains):
         code = tm["train_code"]
+
+        # Quarantine check (AGENTS.md §11) — skip known-bad upstream pages
+        # before hitting the network. No detail fetch, no train/stop write.
+        if code in QUARANTINED_TRAINS:
+            print(f"  [quarantine] skip {code} (in QUARANTINED_TRAINS, "
+                  f"upstream page is broken)")
+            quarantine_skipped += 1
+            continue
+
         detail = fetch_train_detail(session, code, tm["detail_url"], sleeper,
                                      cache_html=True)
 
@@ -143,7 +153,8 @@ def cmd_fetch():
     conn.close()
 
     print(f"\n  ✓ Done: {stats['trains']} trains, {stats['stops']} stops, "
-          f"{stats['stations']} stations | Failed: {failed}")
+          f"{stats['stations']} stations | Failed: {failed}, "
+          f"Quarantined: {quarantine_skipped}")
 
 
 def _ensure_station(name, stations_dict, conn):
