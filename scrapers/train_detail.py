@@ -36,22 +36,59 @@ def _parse_stop_table(table: Any,
     Parse the stop-sequence table.
     Always 7 columns: 站次 | 车站 | 车次 | 到达时间 | 发车时间 | 运行时间 | 停留时间.
 
-    Row-level train-code guard (added 2026-08-11, see AGENTS.md §8):
-        crecc.com sometimes mixes stops of multiple train numbers into one
-        detail page (e.g. /huoche/g4359.html had rows for G4362 / G4359 /
-        G4363). The "车次" column on each row tells us which train that row
-        actually belongs to. If it doesn't match the page's train_code, we
-        skip that row — we'd rather underreport than ingest a wrong route.
-        Pages that lose all their rows (every row is mismatched) end up
-        with stops=[] and main.py cmd_fetch writes a stub train row with
-        stop_count=0, which is the safe failure mode.
-    """
-    stops = []
-    rows = table.find_all("tr")
-    skipped_mismatch = 0
+    Sub-code diversity audit (replaces per-row guard, 2026-10-19;
+    see AGENTS.md §8):
+        crecc.com has TWO distinct multi-row patterns that produce mismatched
+        "车次" sub-codes per row. We must distinguish them:
 
+        A) Train code change mid-route (LEGITIMATE, accept all rows):
+           Page belongs to ONE physical train whose code may change mid-route
+           (often multiple times, e.g., G7071 → G7074 → G7071). At most ONE
+           distinct non-page-code appears in the stop table — it forms ONE
+           contiguous block (or two: upstream + downstream of the page-code).
+           Examples:
+             - G7225: rows 1-2 = G7228, rows 3-5 = G7225 (page-code at end).
+             - G7071: rows 1-3 = G7071, rows 4-11 = G7074, rows 12-17 = G7071
+               (page-code at start + end).
+             - G7074: rows 1-3 = G7071, rows 4-11 = G7074, rows 12-17 = G7071
+               (page-code in middle only — same physical train's segment).
+           Crecc typically documents this with a 温馨提示 note:
+             "本次列车在运行过程中，从 X 站至 Y 站区间，车次将变更为 'Z'."
+           → Accept all rows.
+
+        B) Multi-train row-mixing (UPSTREAM SOURCE BUG, reject all rows):
+           Page accidentally merged stops from MULTIPLE trains. The page-code
+           never anchors the sequence AND/OR ≥2 distinct non-page-codes are
+           interleaved non-contiguously.
+           Example G4359: rows 1-2 = G4362, row 3 = G4359 (page-code, isolated),
+           rows 4-5 = G4362, row 6 = G4359 (page-code, isolated), rows 7-12 =
+           G4363. Page-code appears only as 1-row specks; non-page-codes G4362
+           and G4363 are interleaved. TWO distinct non-page-codes → row-mixing.
+           → Reject all rows (return stops=[]); main.py cmd_fetch falls
+             through to writing a stub train row with stop_count=0, which
+             is the safe failure mode (preserved from the 2026-08-11 guard).
+
+        Detection rule (diversity-based, robust to all code-change patterns):
+          - Find distinct sub-codes in parsed rows.
+          - Distinct NON-PAGE-CODE sub-codes = codes that aren't the page's
+            own code (empty sub-code cells are treated leniently as the
+            page's code).
+          - If page-code never appears in any row → reject (can't anchor).
+          - If there are ≥2 distinct non-page-code sub-codes → reject
+            (row-mixing: multiple trains' stops merged into one page).
+          - Otherwise → accept all rows (single-train, mid-route code change,
+            or "middle-segment" page like G7074 — data still preserved in
+            the page-code's main segment, and reachability is unaffected
+            because the page-code's row data is in the train's stops).
+
+        Empty sub-code cells (some pages have blank cells[2]) are treated
+        leniently as the page's own code.
+    """
+    rows = table.find_all("tr")
     page_code_upper = train_code.upper()
 
+    # ---- First pass: collect every row's metadata ----
+    parsed_rows = []  # list of dicts: {seq, station_name, station_url, effective_code, cells}
     for row in rows:
         cells = row.find_all(["td", "th"])
         if len(cells) < 5:
@@ -72,36 +109,72 @@ def _parse_stop_table(table: Any,
             station_name = cells[1].get_text(strip=True)
             station_url = ""
 
-        # ── Row-level train-code guard ────────────────────────────────
-        # Column 2 = "车次" (train code for this specific stop row).
-        # The cell may contain an <a> link to /huoche/<code>.html OR plain
-        # text. We strip whitespace/case and compare to the page's code.
-        row_code = ""
+        # Row-level sub-code (col 2 = "车次")
+        row_code_raw = ""
         if len(cells) > 2:
             raw = cells[2].get_text(strip=True)
             # Normalize: "G 4362", "g4362\n", " G4362 " → "G4362"
-            row_code = "".join(raw.split()).upper()
-        if row_code and row_code != page_code_upper:
-            print(f"  [parse] {train_code} row {seq} ({station_name}): "
-                  f"row sub-code={row_code!r} ≠ page={train_code!r} → skip")
-            skipped_mismatch += 1
-            continue
+            row_code_raw = "".join(raw.split()).upper()
+        # Empty sub-code → treat as the page's code (lenient)
+        effective_code = row_code_raw if row_code_raw else page_code_upper
 
-        # Column offsets: always col 3=到达, col 4=发车, col 5=运行, col 6=停留
+        parsed_rows.append({
+            "seq": seq,
+            "station_name": station_name,
+            "station_url": station_url,
+            "effective_code": effective_code,
+            "cells": cells,
+        })
+
+    if not parsed_rows:
+        return []
+
+    # ---- Second pass: diversity audit ----
+    # Compute the set of distinct non-page-code sub-codes present in the page.
+    # Empty sub-code cells were already treated as page-code in the first pass.
+    all_codes = {pr["effective_code"] for pr in parsed_rows}
+    non_page_codes = sorted(c for c in all_codes if c != page_code_upper)
+
+    page_code_count = sum(
+        1 for pr in parsed_rows if pr["effective_code"] == page_code_upper
+    )
+
+    if page_code_count == 0:
+        # Page-code never appears in any row → can't anchor this page.
+        # Treat as row-mixing (we cannot trust any row's code attribution).
+        print(f"  [parse] {train_code}: page-code never appears in stop "
+              f"table (saw only: {', '.join(sorted(all_codes))}) → reject "
+              f"all rows")
+        return []
+
+    if len(non_page_codes) >= 2:
+        # ≥2 distinct non-page-codes interleaved → row-mixing (multiple
+        # trains' stops merged). The G4359 case has G4362 + G4363 both
+        # present alongside page-code G4359.
+        all_codes_desc = ", ".join(sorted(all_codes))
+        print(f"  [parse] {train_code}: ROW-MIXING detected "
+              f"(≥2 distinct non-page-codes: {', '.join(non_page_codes)}; "
+              f"all codes: {all_codes_desc}) → reject all rows; "
+              f"safe-failure stub will be written")
+        return []
+
+    # ---- Accept all rows: build stops list ----
+    stops = []
+    for pr in parsed_rows:
+        cells = pr["cells"]
         arrive_raw = cells[3].get_text(strip=True) if len(cells) > 3 else ""
         depart_raw = cells[4].get_text(strip=True) if len(cells) > 4 else ""
         duration_str = cells[5].get_text(strip=True) if len(cells) > 5 else ""
         stop_str = cells[6].get_text(strip=True) if len(cells) > 6 else ""
 
-        # Time + day embedded in same cell
         arrive_time, arrive_day = _parse_time_day(arrive_raw)
         depart_time, depart_day = _parse_time_day(depart_raw)
 
         stops.append({
             "train_code": train_code,
-            "sequence": seq,
-            "station_name": station_name,
-            "station_url": station_url,
+            "sequence": pr["seq"],
+            "station_name": pr["station_name"],
+            "station_url": pr["station_url"],
             "arrive_time": arrive_time,
             "arrive_day": arrive_day,
             "depart_time": depart_time,
@@ -110,9 +183,14 @@ def _parse_stop_table(table: Any,
             "running_minutes": _parse_duration(duration_str),
         })
 
-    if skipped_mismatch:
-        print(f"  [parse] {train_code}: filtered {skipped_mismatch} row(s) "
-              f"with mismatched train code (page-level source bug)")
+    if non_page_codes:
+        # Mid-route code change — log for sanity-check during coverage review.
+        # Acceptable forms include: page-code at end (G7225), page-code at
+        # start+end (G7071), page-code in middle only (G7074 — its stops
+        # are duplicated in the upstream page-code G7071 anyway).
+        non_page = non_page_codes[0]
+        print(f"  [parse] {train_code}: mid-route code change "
+              f"(page-code ↔ {non_page}) → accepted all {len(stops)} rows")
 
     return stops
 

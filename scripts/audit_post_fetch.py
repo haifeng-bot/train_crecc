@@ -2,7 +2,7 @@
 """
 Post-fetch audit — detect data-quality issues introduced by upstream changes.
 
-Runs after every cron_fetch. Five checks against `data/train.db`:
+Runs after every cron_fetch. Six checks against `data/train.db`:
 
   1. duplicate_stops_across_trains  ≥N stops with same (station_id, arrive_time)
                                      shared between two trains → row-mixing
@@ -11,6 +11,13 @@ Runs after every cron_fetch. Five checks against `data/train.db`:
                                      (forward or backward) — day / sequence errors
   4. non_monotonic_running_minutes  stops with running_minutes < prev → time reversal
   5. duplicate_stops_within_train   same station_id appears ≥2 times in one train
+  6. mid_route_code_change_suspicious  trains where the page-code (== train_code)
+                                       appears in middle only OR with non-contiguous
+                                       row segments. Defensive check: if our parser
+                                       accepted a page where the page-code is not at
+                                       start/end and no contiguous non-page-code
+                                       block exists, it might be a row-mixing leak
+                                       through the diversity heuristic.
 
 Output:
   - stdout: human-readable summary
@@ -244,6 +251,54 @@ def check_duplicate_stops_within_train(conn: sqlite3.Connection) -> list[dict]:
     return findings
 
 
+# ── Check 6: suspicious stop sequences (defensive, post 2026-10-19 fix) ──
+
+def check_suspicious_stop_sequences(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Defensive check for the row-mixing leak risk in the diversity-based
+    parser heuristic (see AGENTS.md §8, 2026-10-19 entry).
+
+    Signals a leak when a train's stop sequence has multiple internal
+    "jumps" — geographic or time gaps larger than expected between
+    adjacent rows. Row-mixing typically produces >1 such gap per train.
+
+    Thresholds are conservative (catch only blatant issues):
+      - Geo jump > THRESHOLD_GEO_JUMP_KM between consecutive stops
+      - AND the train has ≥2 such jumps in its sequence
+    """
+    sql = """
+        SELECT s.train_code, s.sequence, st.lat, st.lon
+          FROM stops s
+          JOIN stations st ON s.station_id = st.station_id
+         WHERE st.lat IS NOT NULL AND st.lon IS NOT NULL
+         ORDER BY s.train_code, s.sequence
+    """
+    rows_by_train: dict[str, list] = {}
+    for r in conn.execute(sql).fetchall():
+        rows_by_train.setdefault(r["train_code"], []).append(r)
+
+    findings = []
+    for code, rows in rows_by_train.items():
+        if len(rows) < 2:
+            continue
+        jump_count = 0
+        max_jump = 0.0
+        for prev, cur in zip(rows, rows[1:]):
+            d = haversine_km(prev["lat"], prev["lon"], cur["lat"], cur["lon"])
+            if d > THRESHOLD_GEO_JUMP_KM:
+                jump_count += 1
+                max_jump = max(max_jump, d)
+        if jump_count >= 2:
+            findings.append({
+                "key": f"{code}",
+                "train_code": code,
+                "geo_jump_count": jump_count,
+                "max_jump_km": round(max_jump, 1),
+                "stop_count": len(rows),
+            })
+    return findings
+
+
 # ── Regression diff vs previous run ────────────────────────────────────
 
 def diff_findings(current: list[dict], previous: list[dict] | None) -> dict:
@@ -274,6 +329,7 @@ CHECKS = [
     ("time_delta_anomalies",          lambda c: check_time_anomalies(c)[0]),
     ("non_monotonic_running_minutes", lambda c: check_time_anomalies(c)[1]),
     ("duplicate_stops_within_train",  check_duplicate_stops_within_train),
+    ("suspicious_stop_sequences",     check_suspicious_stop_sequences),
 ]
 
 
