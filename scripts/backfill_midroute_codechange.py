@@ -152,6 +152,7 @@ def main() -> int:
         updated = 0
         unchanged = 0
         rejected = 0
+        cleaned_up = 0
         not_in_trains = 0
         new_station_names: set[str] = set()
         diff_examples: list[str] = []
@@ -164,16 +165,9 @@ def main() -> int:
                 print(f"  ! {code}: read failed: {e}")
                 continue
 
-            new_stops = _parse_one_snapshot(html, code)
-
-            if not new_stops:
-                # Parser rejected (row-mixing). Leave existing data alone —
-                # if it was a stub (stop_count=0), it stays a stub. If it had
-                # partial stops (impossible with old parser for row-mixing'd
-                # pages — they'd be filtered to empty too), also leave alone.
-                rejected += 1
-                continue
-
+            # Look up train's existing DB state ONCE per iteration
+            # (avoids leaking cur_count from previous iterations when
+            # the parser rejects and we need to check stop_count for cleanup).
             cur_count = conn.execute(
                 "SELECT stop_count FROM trains WHERE train_code = ?", (code,)
             ).fetchone()
@@ -181,6 +175,27 @@ def main() -> int:
                 # Train not in our DB (added upstream but skip-if-unchanged
                 # hasn't re-fetched). Skip — let the next fetch handle it.
                 not_in_trains += 1
+                continue
+
+            new_stops = _parse_one_snapshot(html, code)
+
+            if not new_stops:
+                # Parser rejected (row-mixing). CLEAN UP any stale stops
+                # from a previous backfill run that used a looser heuristic.
+                # The new heuristic catches more row-mixing pages (e.g.,
+                # G4741/G4744/D4836/Y408 etc.) — their old stops came from
+                # an earlier, looser parser and need to be removed.
+                if cur_count["stop_count"] > 0:
+                    with transaction(conn) as c:
+                        c.execute("DELETE FROM stops WHERE train_code = ?", (code,))
+                        c.execute(
+                            "UPDATE trains SET stop_count = 0 WHERE train_code = ?",
+                            (code,),
+                        )
+                    cleaned_up += 1
+                    rejected += 1
+                else:
+                    rejected += 1
                 continue
 
             if _train_stops_match(conn, code, new_stops):
@@ -265,7 +280,9 @@ def main() -> int:
 
         print(f"\n[backfill] Updated:           {updated}")
         print(f"[backfill] Unchanged (no-op): {unchanged}")
-        print(f"[backfill] Parser-rejected:   {rejected}  (row-mixing, leave as-is)")
+        print(f"[backfill] Parser-rejected:   {rejected}  (row-mixing, safe-fail stub)")
+        if cleaned_up:
+            print(f"[backfill]   └─ cleaned up     {cleaned_up}  (stale stops from earlier run)")
         print(f"[backfill] Not in trains:     {not_in_trains}  (skip-if-unchanged pending)")
         if diff_examples:
             print(f"\n[backfill] Sample diffs (first {len(diff_examples)}):")

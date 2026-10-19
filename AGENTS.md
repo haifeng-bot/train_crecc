@@ -162,7 +162,7 @@ layer                    z-index
 - 大约 737 车次 → 761 个详情页 → 1 万+ stops
 - 单次 fetch 完整流程大约 15-20 分钟(节流导致)
 - 如果改 scraper,**先看 `scrapers/wuhu_page.py` 和 `train_detail.py` 的解析函数**--crecc 站点的 HTML 结构是隐式契约
-- **每行 stops 表的"车次"列必须等于页面车次**(row-level guard,见 §8 的 2026-08-11 条目 + `_parse_stop_table`)。这是 crecc.com 把多趟车的 stops 拼到同一详情页时的最后一道防线
+- **每行 stops 表的"车次"列必须等于页面车次**(见 §8 2026-10-19 的 heuristic 二义问题, + `scrapers/train_detail.py:_parse_stop_table` 的双重规则:**A) 多车混排** ≥2 distinct non-page-code sub-codes → reject(类 G4359)。**B) 单行混号**(任何 sub-code 的连续块只有 1 行 且不是首块)→ reject(类 G4741 / C9706 / Y486)。A 与 B 是类上游 row-mixing 不同形态,类 A 页面同一物理列车多个 sub-code 互援,类别 B 页面以 1-row 碎片撝入他趟车的 stops。创单例 B 走过 A 全量场景:**diversity 通过** 但出现 **单行块** → 仍 reject。**唯一绕过**:首块 1-row + 后续 ≥2-row 块 → 接受(类 C3023)。**所有类上游混块页面**均安全-fail stop_count=0(被 `main.py cmd_fetch` 的 stub 取代)
 
 ---
 

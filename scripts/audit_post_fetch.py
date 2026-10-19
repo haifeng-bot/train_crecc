@@ -2,7 +2,7 @@
 """
 Post-fetch audit — detect data-quality issues introduced by upstream changes.
 
-Runs after every cron_fetch. Six checks against `data/train.db`:
+Runs after every cron_fetch. Seven checks against `data/train.db`:
 
   1. duplicate_stops_across_trains  ≥N stops with same (station_id, arrive_time)
                                      shared between two trains → row-mixing
@@ -18,6 +18,12 @@ Runs after every cron_fetch. Six checks against `data/train.db`:
                                        start/end and no contiguous non-page-code
                                        block exists, it might be a row-mixing leak
                                        through the diversity heuristic.
+  7. outlier_station_coords         stations whose coords are clearly wrong:
+                                     A) >200 km from any sibling in same city, OR
+                                     B) >500 km from any train-route neighbor.
+                                     Catches "玉环 placed in Liaoning 1300km away
+                                     from 4 Zhejiang siblings" and similar 2026-10-19
+                                     geocoder mishaps.
 
 Output:
   - stdout: human-readable summary
@@ -299,6 +305,110 @@ def check_suspicious_stop_sequences(conn: sqlite3.Connection) -> list[dict]:
     return findings
 
 
+# ── Check 7: outlier station coordinates (post 2026-10-19 玉环 fix) ──
+
+# Threshold rationale:
+#   - Same-city siblings should be ≤50km apart (a city typically spans <100km).
+#     200km catches "placed in wrong province" (玉环→辽宁 1300km) without
+#     false-positives on legitimate edge cases (e.g., 玉环市 is ~60km from
+#     温岭/台州 in Taizhou).
+#   - Route neighbors: 500km between adjacent stops on the same train is a
+#     strong "this station is in the wrong region" signal — even a Beijing→上海
+#     train only has ~1200km total, so >500km between two adjacent stops is
+#     almost always a miscoded station.
+OUTLIER_SIBLING_KM = 200
+OUTLIER_ROUTE_NEIGHBOR_KM = 500
+
+
+def check_outlier_station_coords(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Detect stations whose coordinates are clearly inconsistent with their
+    context — either city-mates (same city_id) or train-route neighbors.
+
+    Two checks per station (deduped by station_name):
+      A) **City outlier**: station's coords are >OUTLIER_SIBLING_KM from
+         every other station in the same city. Catches "玉环→辽宁" while
+         4 siblings are in Zhejiang.
+      B) **Route outlier**: station appears in some train's stop list AND
+         its coords are >OUTLIER_ROUTE_NEIGHBOR_KM from the nearest neighbor
+         (by sequence) on that train. Catches "绩溪县→吉林" while train route
+         stays in Anhui.
+
+    Findings list uses city_id or train|sequence as key for dedup.
+    """
+    findings: dict[str, dict] = {}
+
+    # -- A) City outliers --
+    city_stations = """
+        SELECT s.station_id, s.station_name, s.city_id, c.city_name, s.lat, s.lon
+        FROM stations s JOIN cities c ON s.city_id = c.city_id
+        WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
+    """
+    by_city: dict[int, list] = {}
+    for r in conn.execute(city_stations).fetchall():
+        by_city.setdefault(r["city_id"], []).append(r)
+
+    for city_id, rows in by_city.items():
+        if len(rows) < 2:
+            continue
+        for target in rows:
+            # min distance to any other station in same city
+            min_d = None
+            for other in rows:
+                if other["station_id"] == target["station_id"]:
+                    continue
+                d = haversine_km(target["lat"], target["lon"],
+                                 other["lat"], other["lon"])
+                if min_d is None or d < min_d:
+                    min_d = d
+            if min_d is not None and min_d > OUTLIER_SIBLING_KM:
+                key = f"city:{target['station_name']}"
+                findings[key] = {
+                    "key": key,
+                    "station_name": target["station_name"],
+                    "city_name": target["city_name"],
+                    "check": "city_outlier",
+                    "min_sibling_distance_km": round(min_d, 1),
+                    "lat": target["lat"],
+                    "lon": target["lon"],
+                }
+
+    # -- B) Route outliers (only for stations with city-outlier OR unknown) --
+    train_stops = """
+        SELECT s.train_code, s.sequence, st.station_id, st.station_name,
+               st.lat, st.lon
+          FROM stops s JOIN stations st ON s.station_id = st.station_id
+         WHERE st.lat IS NOT NULL AND st.lon IS NOT NULL
+         ORDER BY s.train_code, s.sequence
+    """
+    by_train: dict[str, list] = {}
+    for r in conn.execute(train_stops).fetchall():
+        by_train.setdefault(r["train_code"], []).append(r)
+
+    for code, rows in by_train.items():
+        for prev, cur in zip(rows, rows[1:]):
+            d = haversine_km(prev["lat"], prev["lon"], cur["lat"], cur["lon"])
+            if d > OUTLIER_ROUTE_NEIGHBOR_KM:
+                for station_name, station_lat, station_lon in [
+                    (prev["station_name"], prev["lat"], prev["lon"]),
+                    (cur["station_name"], cur["lat"], cur["lon"]),
+                ]:
+                    key = f"route:{station_name}"
+                    if key in findings:
+                        continue  # already flagged
+                    findings[key] = {
+                        "key": key,
+                        "station_name": station_name,
+                        "check": "route_outlier",
+                        "max_neighbor_distance_km": round(d, 1),
+                        "train_code": code,
+                        "lat": station_lat,
+                        "lon": station_lon,
+                    }
+
+    return sorted(findings.values(), key=lambda x: x["key"])
+
+
 # ── Regression diff vs previous run ────────────────────────────────────
 
 def diff_findings(current: list[dict], previous: list[dict] | None) -> dict:
@@ -330,6 +440,7 @@ CHECKS = [
     ("non_monotonic_running_minutes", lambda c: check_time_anomalies(c)[1]),
     ("duplicate_stops_within_train",  check_duplicate_stops_within_train),
     ("suspicious_stop_sequences",     check_suspicious_stop_sequences),
+    ("outlier_station_coords",        check_outlier_station_coords),
 ]
 
 

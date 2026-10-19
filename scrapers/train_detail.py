@@ -68,21 +68,30 @@ def _parse_stop_table(table: Any,
              through to writing a stub train row with stop_count=0, which
              is the safe failure mode (preserved from the 2026-08-11 guard).
 
-        Detection rule (diversity-based, robust to all code-change patterns):
-          - Find distinct sub-codes in parsed rows.
-          - Distinct NON-PAGE-CODE sub-codes = codes that aren't the page's
-            own code (empty sub-code cells are treated leniently as the
-            page's code).
-          - If page-code never appears in any row → reject (can't anchor).
-          - If there are ≥2 distinct non-page-code sub-codes → reject
-            (row-mixing: multiple trains' stops merged into one page).
-          - Otherwise → accept all rows (single-train, mid-route code change,
-            or "middle-segment" page like G7074 — data still preserved in
-            the page-code's main segment, and reachability is unaffected
-            because the page-code's row data is in the train's stops).
+        Detection rule (diversity + single-row block, robust to all
+        code-change patterns, see AGENTS.md §8 2026-10-19):
+          Two-part check — row-mixing triggers EITHER condition:
 
-        Empty sub-code cells (some pages have blank cells[2]) are treated
-        leniently as the page's own code.
+          1) **Diversity**: ≥2 distinct non-page-code sub-codes in the
+             page. Catches G4359 (G4362 + G4363 alongside page-code G4359)
+             and the 2026-08-11 G4362/G4363/Y414/Y415 row-mixing family.
+
+          2) **Single-row block (first position only)**: a contiguous block
+             of rows with the same sub-code has size = 1 AND it's NOT
+             the FIRST block of the sequence. Catches G4741 (many 1-row
+             blocks scattered in the middle) AND C9706 (1-row tail from
+             another train at the LAST position — a classic row-mixing
+             tail). The ONLY case where a 1-row block is allowed is the
+             FIRST position, where a single row at start legitimately
+             represents a page-code that operates for only one stop before
+             changing to another code (e.g., C3023: C3023×1 → C3022×3 —
+             the train runs as C3023 only for 上海南, then switches to
+             C3022). G7225 (no 1-row blocks at all), G7071/G7074 (no
+             1-row blocks; ≥3 rows per block), and C3023 (page-code's
+             1-row at FIRST only) are all accepted.
+
+          Empty sub-code cells (some pages have blank cells[2]) are treated
+          leniently as the page's own code — they don't affect either rule.
     """
     rows = table.find_all("tr")
     page_code_upper = train_code.upper()
@@ -129,33 +138,74 @@ def _parse_stop_table(table: Any,
     if not parsed_rows:
         return []
 
-    # ---- Second pass: diversity audit ----
-    # Compute the set of distinct non-page-code sub-codes present in the page.
-    # Empty sub-code cells were already treated as page-code in the first pass.
+    # ---- Second pass: diversity + single-row-block audit ----
     all_codes = {pr["effective_code"] for pr in parsed_rows}
     non_page_codes = sorted(c for c in all_codes if c != page_code_upper)
-
     page_code_count = sum(
         1 for pr in parsed_rows if pr["effective_code"] == page_code_upper
     )
 
-    if page_code_count == 0:
-        # Page-code never appears in any row → can't anchor this page.
-        # Treat as row-mixing (we cannot trust any row's code attribution).
-        print(f"  [parse] {train_code}: page-code never appears in stop "
-              f"table (saw only: {', '.join(sorted(all_codes))}) → reject "
-              f"all rows")
+    # Row-mixing condition #1: ≥2 distinct non-page-codes (or page-code absent)
+    diversity_reject = (
+        page_code_count == 0 or len(non_page_codes) >= 2
+    )
+
+    # Row-mixing condition #2: any 1-row block in the MIDDLE of the sequence.
+    # A 1-row block at position 0 (first) or position n-1 (last) is allowed —
+    # those are "edge" cases where the page-code briefly appears at the start
+    # or end of the route. Catches G4741 (1-row blocks scattered in middle),
+    # Y486, T235, D4836, etc. Allows C3023 (1-row page-code block at start).
+    block_sizes: list[int] = []
+    cur_size = 1
+    cur_code = parsed_rows[0]["effective_code"]
+    for pr in parsed_rows[1:]:
+        if pr["effective_code"] == cur_code:
+            cur_size += 1
+        else:
+            block_sizes.append(cur_size)
+            cur_size = 1
+            cur_code = pr["effective_code"]
+    block_sizes.append(cur_size)
+    n_blocks = len(block_sizes)
+    # A 1-row block is allowed ONLY at the FIRST position. 1-row blocks
+    # anywhere else (middle or last) are row-mixing — a single-row tail
+    # from another train is the classic row-mixing signature (e.g.,
+    # C9706 page ends with C9703×1, Y486 has 1-row blocks in the middle).
+    non_first_single_row_blocks = [
+        i for i, s in enumerate(block_sizes)
+        if s == 1 and i > 0
+    ]
+    has_non_first_single_row_block = len(non_first_single_row_blocks) > 0
+
+    if diversity_reject:
+        if page_code_count == 0:
+            print(f"  [parse] {train_code}: page-code never appears in stop "
+                  f"table (saw only: {', '.join(sorted(all_codes))}) → reject "
+                  f"all rows")
+        else:
+            print(f"  [parse] {train_code}: ROW-MIXING detected "
+                  f"(≥2 distinct non-page-codes: {', '.join(non_page_codes)}; "
+                  f"all codes: {', '.join(sorted(all_codes))}) → reject all "
+                  f"rows; safe-failure stub will be written")
         return []
 
-    if len(non_page_codes) >= 2:
-        # ≥2 distinct non-page-codes interleaved → row-mixing (multiple
-        # trains' stops merged). The G4359 case has G4362 + G4363 both
-        # present alongside page-code G4359.
-        all_codes_desc = ", ".join(sorted(all_codes))
+    if has_non_first_single_row_block:
+        # Build "G4744×4 → G4741×1 → G4744×1 → G4741×9" compact description
+        cur_code = parsed_rows[0]["effective_code"]
+        cur_size = 1
+        blocks_desc_parts: list[str] = []
+        for pr in parsed_rows[1:]:
+            if pr["effective_code"] == cur_code:
+                cur_size += 1
+            else:
+                blocks_desc_parts.append(f"{cur_code}×{cur_size}")
+                cur_code = pr["effective_code"]
+                cur_size = 1
+        blocks_desc_parts.append(f"{cur_code}×{cur_size}")
+        blocks_desc = " → ".join(blocks_desc_parts)
         print(f"  [parse] {train_code}: ROW-MIXING detected "
-              f"(≥2 distinct non-page-codes: {', '.join(non_page_codes)}; "
-              f"all codes: {all_codes_desc}) → reject all rows; "
-              f"safe-failure stub will be written")
+              f"(1-row block at non-first position: {blocks_desc}) → reject "
+              f"all rows; safe-failure stub will be written")
         return []
 
     # ---- Accept all rows: build stops list ----
