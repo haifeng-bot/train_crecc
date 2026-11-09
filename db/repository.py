@@ -4,6 +4,7 @@ Repository layer — all DB reads/writes in one place.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -393,6 +394,25 @@ def export_reach_json(
             "station_count": len(stations_out),
             "stations": stations_out,
         }
+
+        # 上游没变时，逐字节重写只会产生一个「只有 generated_at 不同」的 commit。
+        # 2026-11-05 ~ 11-08 连续三天如此，cron 也两次提问「要不要跳过」。
+        # generated_at 前端根本不读（grep 过 frontend/ 全目录：没有引用），
+        # 所以这里只在**内容真的变了**时才写文件。
+        # 副作用（正向）：generated_at 的含义回到「这份数据是什么时候生成的」，
+        # 而不是「我们最后一次重新导出是什么时候」。
+        if os.path.exists(output_path):
+            try:
+                with open(output_path, encoding="utf-8") as f:
+                    old_payload = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                old_payload = None  # 文件坏了/读不了 → 照常写
+            if old_payload is not None:
+                strip = lambda d: {k: v for k, v in d.items() if k != "generated_at"}  # noqa: E731
+                if strip(old_payload) == strip(out):
+                    print(f"[export] 内容未变化 → 跳过写入 {output_path} "
+                          f"(保留原 generated_at={old_payload.get('generated_at')})")
+                    return out
 
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
